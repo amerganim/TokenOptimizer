@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { countTokens, estimateCost } from './tokenCounter';
 import { PromptPanel } from './promptPanel';
+import { registerTagCompletion } from './tagCompletion';
 
 // Status bar item declared outside activate() 
 // so it can be updated from anywhere
@@ -36,6 +37,17 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(costCommand);
 
+	// Register the prompt panel command
+	const promptPanelCommand = vscode.commands.registerCommand(
+		'token-optimizer.openPromptPanel', () => {
+			PromptPanel.createOrShow(context);
+		}
+	);
+	context.subscriptions.push(promptPanelCommand);
+
+	// Register @ tag autocomplete
+	registerTagCompletion(context);
+
     // UPDATE STATUS BAR when cursor moves or selection changes
     const selectionChange = vscode.window.onDidChangeTextEditorSelection(() => {
         updateStatusBar();
@@ -51,13 +63,6 @@ export function activate(context: vscode.ExtensionContext) {
     // Run once immediately on load
     updateStatusBar();
 
-	// Register the prompt panel command
-	const promptPanelCommand = vscode.commands.registerCommand(
-		'token-optimizer.openPromptPanel', () => {
-			PromptPanel.createOrShow(context);
-		}
-	);
-	context.subscriptions.push(promptPanelCommand);
 }
 
 function updateStatusBar() {
