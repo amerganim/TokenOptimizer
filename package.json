@@ -9,16 +9,22 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+],
   "main": "./out/extension.js",
-  "contributes": {
+"contributes": {
     "commands": [
-      {
-        "command": "token-optimizer.helloWorld",
-        "title": "Hello World"
-      }
+        {
+            "command": "token-optimizer.helloWorld",
+            "title": "Hello World"
+        },
+        {
+            "command": "token-optimizer.showCost",
+            "title": "Token Optimizer: Show Cost Estimate"
+        }
     ]
-  },
+},
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
