@@ -11,39 +11,49 @@
   ],
   "activationEvents": [
     "onStartupFinished"
-],
+  ],
   "main": "./out/extension.js",
-"contributes": {
+  "contributes": {
     "commands": [
-        {
-            "command": "token-optimizer.helloWorld",
-            "title": "Hello World"
-        },
-        {
-            "command": "token-optimizer.showCost",
-            "title": "Token Optimizer: Show Cost Estimate"
-        }
+      {
+        "command": "token-optimizer.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "token-optimizer.showCost",
+        "title": "Token Optimizer: Show Cost Estimate"
+      }
     ]
-},
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:unit": "jest"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.120.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.3",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.9",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1"
   },
   "dependencies": {
     "tiktoken": "^1.0.22"
-  }
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/test/**/*.test.ts"]
+}
+
 }
