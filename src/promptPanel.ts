@@ -2,8 +2,9 @@ import * as vscode from 'vscode';
 import { countTokens } from './tokenCounter';
 import { ContextExtractor } from './contextExtractor';
 import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from './tokenTrimmer';
+import { PromptCompressor, COMPRESS_DEFAULT, COMPRESS_AGGRESSIVE, COMPRESS_LIGHT } from './promptCompressor';
 import { Metrics } from './metrics';
-import { getSettings, TrimmerPreset } from './settings';
+import { getSettings, TrimmerPreset, CompressorPreset } from './settings';
 
 export class PromptPanel {
 
@@ -62,9 +63,9 @@ export class PromptPanel {
     }
 
     private _handleOptimize(promptText: string) {
-        const hasOptimize = promptText.includes('@optimize');
-        const hasCompress = promptText.includes('@compress');
-        const hasScopeFn  = promptText.includes('@scope:fn');
+        const hasOptimize  = promptText.includes('@optimize');
+        const hasCompress  = promptText.includes('@compress');
+        const hasScopeFn   = promptText.includes('@scope:fn');
         const hasScopeFile = promptText.includes('@scope:file');
 
         // Strip tags from prompt
@@ -75,25 +76,47 @@ export class PromptPanel {
             .replace('@scope:file', '')
             .trim();
 
-        // Pick trimmer preset from settings (@optimize / @compress can override)
-        const preset: TrimmerPreset = hasCompress
-            ? 'aggressive'
-            : hasOptimize
-                ? 'default'
-                : getSettings().trimmerPreset;
-        const options = preset === 'aggressive'
-            ? AGGRESSIVE_OPTIONS
-            : preset === 'light'
-                ? LIGHT_OPTIONS
-                : DEFAULT_OPTIONS;
+        const settings = getSettings();
 
-        // Apply trimming
-        const trimResult = TokenTrimmer.trim(cleanPrompt, options);
-        let optimized = trimResult.trimmed;
-        const rulesApplied = trimResult.rulesApplied;
+        // Tag semantics:
+        //  @optimize          → code trimmer only
+        //  @compress          → linguistic compressor only
+        //  both / neither     → run both (non-destructive on each other)
+        const runTrimmer    = hasOptimize  || (!hasOptimize && !hasCompress);
+        const runCompressor = hasCompress  || (!hasOptimize && !hasCompress);
 
-        // Handle @scope:fn — inject current function as context
-        let scopeInfo = '';
+        let working = cleanPrompt;
+        const rulesApplied: string[] = [];
+
+        // 1) Linguistic compression first — code blocks are preserved internally
+        if (runCompressor) {
+            const cPreset: CompressorPreset = settings.compressorPreset;
+            const cOpts = cPreset === 'aggressive'
+                ? COMPRESS_AGGRESSIVE
+                : cPreset === 'light'
+                    ? COMPRESS_LIGHT
+                    : COMPRESS_DEFAULT;
+            const cResult = PromptCompressor.compress(working, cOpts);
+            working = cResult.compressed;
+            cResult.rulesApplied.forEach(r => rulesApplied.push(`compress:${r}`));
+        }
+
+        // 2) Code trimming second — operates on the result
+        if (runTrimmer) {
+            const tPreset: TrimmerPreset = settings.trimmerPreset;
+            const tOpts = tPreset === 'aggressive'
+                ? AGGRESSIVE_OPTIONS
+                : tPreset === 'light'
+                    ? LIGHT_OPTIONS
+                    : DEFAULT_OPTIONS;
+            const tResult = TokenTrimmer.trim(working, tOpts);
+            working = tResult.trimmed;
+            tResult.rulesApplied.forEach(r => rulesApplied.push(`trim:${r}`));
+        }
+
+        let optimized = working;
+
+        // Handle @scope:fn / @scope:file — inject editor context
         if (hasScopeFn || hasScopeFile) {
             const editor = vscode.window.activeTextEditor;
             if (editor) {
@@ -103,12 +126,10 @@ export class PromptPanel {
                     const label = extracted.functionName
                         ? `function "${extracted.functionName}"`
                         : `lines ${extracted.startLine + 1}–${extracted.endLine + 1}`;
-                    scopeInfo = `\n\n[Context: ${label}]\n\`\`\`\n${extracted.text}\n\`\`\``;
-                    optimized = optimized + scopeInfo;
+                    optimized += `\n\n[Context: ${label}]\n\`\`\`\n${extracted.text}\n\`\`\``;
                 }
             } else {
-                scopeInfo = '\n\n[No file open — open a file and place cursor inside a function]';
-                optimized = optimized + scopeInfo;
+                optimized += '\n\n[No file open — open a file and place cursor inside a function]';
             }
         }
 
@@ -328,7 +349,8 @@ export class PromptPanel {
             <h2>⚡ Token Optimizer</h2>
 
             <div class="tag-hint">
-                💡 Tags: <strong>@optimize</strong> · <strong>@compress</strong> · <strong>@scope:fn</strong> · <strong>@scope:file</strong>
+                💡 Tags: <strong>@optimize</strong> (code) · <strong>@compress</strong> (prose) · <strong>@scope:fn</strong> · <strong>@scope:file</strong>
+                <br/><span style="opacity:0.7">No tag = both. Code blocks inside <code>\`\`\`</code> are preserved.</span>
             </div>
 
             <textarea

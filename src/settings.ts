@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 export type ModelId = 'gpt-4o' | 'gpt-4o-mini' | 'claude-sonnet' | 'claude-haiku';
 export type TrimmerPreset = 'light' | 'default' | 'aggressive';
+export type CompressorPreset = 'light' | 'default' | 'aggressive';
 export type LogCompressionPreset = 'mild' | 'balanced' | 'aggressive';
 
 export interface Settings {
@@ -10,6 +11,7 @@ export interface Settings {
     statusBarEnabled: boolean;
     statusBarShowCost: boolean;
     trimmerPreset: TrimmerPreset;
+    compressorPreset: CompressorPreset;
     logCompressionPreset: LogCompressionPreset;
     enableSemanticSearch: boolean;
     enableOllama: boolean;
@@ -25,6 +27,7 @@ export function getSettings(): Settings {
         statusBarEnabled:     cfg.get<boolean>('statusBar.enabled', true),
         statusBarShowCost:    cfg.get<boolean>('statusBar.showCost', false),
         trimmerPreset:        cfg.get<TrimmerPreset>('trimmer.preset', 'default'),
+        compressorPreset:     cfg.get<CompressorPreset>('compressor.preset', 'default'),
         logCompressionPreset: cfg.get<LogCompressionPreset>('logCompression.preset', 'balanced'),
         enableSemanticSearch: cfg.get<boolean>('features.semanticSearch', false),
         enableOllama:         cfg.get<boolean>('features.ollama', false),

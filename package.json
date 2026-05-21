@@ -73,7 +73,13 @@
           "type": "string",
           "enum": ["light", "default", "aggressive"],
           "default": "default",
-          "description": "Trimmer preset used by the Prompt Panel when no explicit option is selected."
+          "description": "Code trimmer preset (comments, console.logs, duplicate imports). Used when no @optimize tag is set."
+        },
+        "tokenOptimizer.compressor.preset": {
+          "type": "string",
+          "enum": ["light", "default", "aggressive"],
+          "default": "default",
+          "markdownDescription": "Linguistic compressor preset.\n- `light`: only whitespace + punctuation cleanup\n- `default`: + remove politeness/hedging/meta-commentary, shorten verbose phrases\n- `aggressive`: + strip filler adverbs and abbreviate technical terms (auth, app, config, …)"
         },
         "tokenOptimizer.logCompression.preset": {
           "type": "string",

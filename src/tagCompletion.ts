@@ -4,19 +4,21 @@ import * as vscode from 'vscode';
 const TAGS = [
     {
         label: '@optimize',
-        detail: 'Trim waste tokens from prompt',
+        detail: 'Trim code waste (comments, console.logs, blank lines)',
         documentation: new vscode.MarkdownString(
-            '**@optimize** — Removes redundant whitespace, blank lines, and unnecessary repetition from your prompt before sending to AI.\n\n' +
-            '**Example:** `@optimize Fix the login bug in my auth service`'
+            '**@optimize** — Code-focused trimmer. Removes inline/block comments, `console.log` calls, duplicate imports, blank lines, and trailing whitespace.\n\n' +
+            '**Use for:** prompts that contain code snippets.\n\n' +
+            '**Example:** `@optimize Refactor this:\n\\`\\`\\`js\\n// a comment\\nconsole.log("x")\\n\\`\\`\\``'
         ),
         insertText: '@optimize '
     },
     {
         label: '@compress',
-        detail: 'AI summarize large context',
+        detail: 'Compress prose (filler, hedging, verbose phrases)',
         documentation: new vscode.MarkdownString(
-            '**@compress** — Uses AI to summarize large files or selections into a compact, token-efficient version.\n\n' +
-            '**Example:** `@compress Review this entire service for security issues`'
+            '**@compress** — Prose-focused compressor. Removes politeness (“please”, “could you”), hedging (“I think”, “maybe”), meta-commentary (“to be clear”), and rewrites verbose phrases (“in order to” → “to”). Code blocks are preserved untouched.\n\n' +
+            '**Use for:** long natural-language prompts and instructions.\n\n' +
+            '**Example:** `@compress Could you please check if there is maybe a bug in the auth flow?`'
         ),
         insertText: '@compress '
     },
