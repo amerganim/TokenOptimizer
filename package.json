@@ -15,28 +15,28 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-        {
-            "command": "token-optimizer.helloWorld",
-            "title": "Hello World"
-        },
-        {
-            "command": "token-optimizer.showCost",
-            "title": "Token Optimizer: Show Cost Estimate"
-        },
-        {
-            "command": "token-optimizer.openPromptPanel",
-            "title": "Token Optimizer: Open Prompt Panel"
-        }
+      {
+        "command": "token-optimizer.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "token-optimizer.showCost",
+        "title": "Token Optimizer: Show Cost Estimate"
+      },
+      {
+        "command": "token-optimizer.openPromptPanel",
+        "title": "Token Optimizer: Open Prompt Panel"
+      }
     ],
     "keybindings": [
-        {
-            "command": "token-optimizer.openPromptPanel",
-            "key": "ctrl+shift+o",
-            "mac": "cmd+shift+o",
-            "when": "editorTextFocus"
-        }
+      {
+        "command": "token-optimizer.openPromptPanel",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o",
+        "when": "editorTextFocus"
+      }
     ]
-},
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
@@ -65,7 +65,8 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "testMatch": ["**/test/**/*.test.ts"]
-}
-
+    "testMatch": [
+      "**/test/**/*.test.ts"
+    ]
+  }
 }

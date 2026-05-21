@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { countTokens } from './tokenCounter';
+import { ContextExtractor } from './contextExtractor';
 
 export class PromptPanel {
 
@@ -58,27 +59,49 @@ export class PromptPanel {
     }
 
     private _handleOptimize(promptText: string) {
-        // Detect which @tag is being used
         const hasOptimize = promptText.includes('@optimize');
         const hasCompress = promptText.includes('@compress');
         const hasScopeFn  = promptText.includes('@scope:fn');
+        const hasScopeFile = promptText.includes('@scope:file');
 
-        // Strip the tags from the prompt
+        // Strip tags from prompt
         let cleanPrompt = promptText
             .replace('@optimize', '')
             .replace('@compress', '')
             .replace('@scope:fn', '')
+            .replace('@scope:file', '')
             .trim();
 
-        // For now apply basic trimming
+        // Apply basic trimming
         let optimized = this._basicTrim(cleanPrompt);
+
+        // Handle @scope:fn — inject current function as context
+        let scopeInfo = '';
+        if (hasScopeFn || hasScopeFile) {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                const scope = hasScopeFn ? 'fn' : 'file';
+                const extracted = ContextExtractor.extractForScope(scope, editor);
+                if (extracted) {
+                    const label = extracted.functionName
+                        ? `function "${extracted.functionName}"`
+                        : `lines ${extracted.startLine + 1}–${extracted.endLine + 1}`;
+                    scopeInfo = `\n\n[Context: ${label}]\n\`\`\`\n${extracted.text}\n\`\`\``;
+                    optimized = optimized + scopeInfo;
+                }
+            } else {
+                scopeInfo = '\n\n[No file open — open a file and place cursor inside a function]';
+                optimized = optimized + scopeInfo;
+            }
+        }
 
         const originalTokens = countTokens(promptText);
         const optimizedTokens = countTokens(optimized);
         const saved = originalTokens - optimizedTokens;
-        const savedPct = Math.round((saved / originalTokens) * 100);
+        const savedPct = originalTokens > 0
+            ? Math.round((saved / originalTokens) * 100)
+            : 0;
 
-        // Send result back to the webview
         this._panel.webview.postMessage({
             command: 'optimizeResult',
             original: promptText,
