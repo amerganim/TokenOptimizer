@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { countTokens } from './tokenCounter';
 import { ContextExtractor } from './contextExtractor';
+import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from './tokenTrimmer';
 
 export class PromptPanel {
 
@@ -73,7 +74,9 @@ export class PromptPanel {
             .trim();
 
         // Apply basic trimming
-        let optimized = this._basicTrim(cleanPrompt);
+        const trimResult = TokenTrimmer.trim(cleanPrompt, DEFAULT_OPTIONS);
+        let optimized = trimResult.trimmed;
+        const rulesApplied = trimResult.rulesApplied;
 
         // Handle @scope:fn — inject current function as context
         let scopeInfo = '';
@@ -109,18 +112,14 @@ export class PromptPanel {
             originalTokens: originalTokens,
             optimizedTokens: optimizedTokens,
             saved: saved,
-            savedPct: savedPct
+            savedPct: savedPct,
+            rulesApplied: rulesApplied
         });
     }
 
     private _basicTrim(text: string): string {
-        return text
-            // Remove multiple blank lines — collapse to single blank line
-            .replace(/\n{3,}/g, '\n\n')
-            // Remove trailing whitespace from each line
-            .split('\n').map(line => line.trimEnd()).join('\n')
-            // Remove leading/trailing whitespace
-            .trim();
+        const result = TokenTrimmer.trim(text, DEFAULT_OPTIONS);
+        return result.trimmed;
     }
 
     private _getHtmlContent(): string {
@@ -264,6 +263,7 @@ export class PromptPanel {
             <span>After: <span id="afterTokens">0</span> tokens</span>
             <span class="saved">Saved: <span id="savedTokens">0</span> tokens (<span id="savedPct">0</span>%)</span>
         </div>
+        <div id="rulesApplied" style="font-size:11px; opacity:0.6; margin-top:4px;"></div>
         <div class="result-text" id="resultText"></div>
         <button class="copy-btn" onclick="copyResult()">📋 Copy to clipboard</button>
     </div>
@@ -321,6 +321,11 @@ export class PromptPanel {
                 document.getElementById('savedTokens').textContent = message.saved;
                 document.getElementById('savedPct').textContent = message.savedPct;
                 document.getElementById('resultText').textContent = message.optimized;
+                    // NEW LINE — show which rules were applied
+                document.getElementById('rulesApplied').textContent = 
+                    message.rulesApplied && message.rulesApplied.length > 0
+                        ? '✓ ' + message.rulesApplied.join(' · ')
+                        : '';
                 document.getElementById('resultBox').classList.add('show');
             }
         });

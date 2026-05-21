@@ -69,3 +69,56 @@ describe('estimateCost', () => {
     });
 
 });
+
+import { TokenTrimmer, DEFAULT_OPTIONS } from '../tokenTrimmer';
+
+describe('TokenTrimmer', () => {
+
+    test('removes block comments', () => {
+        const input = `const x = 1; /* this is a comment */ const y = 2;`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).not.toContain('/*');
+        expect(result.trimmed).toContain('const x = 1;');
+    });
+
+    test('removes inline comments', () => {
+        const input = `const x = 1; // this is inline\nconst y = 2;`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).not.toContain('// this is inline');
+        expect(result.trimmed).toContain('const x = 1;');
+    });
+
+    test('removes console.log statements', () => {
+        const input = `function test() {\n  console.log('debug');\n  return true;\n}`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).not.toContain('console.log');
+        expect(result.trimmed).toContain('return true;');
+    });
+
+    test('collapses multiple blank lines', () => {
+        const input = `line1\n\n\n\nline2`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).not.toMatch(/\n{3,}/);
+    });
+
+    test('trimmed version has fewer or equal tokens', () => {
+        const input = `
+            // This function adds two numbers
+            /* It was written in 2023 */
+            function add(a: number, b: number): number {
+                console.log('adding', a, b); // debug log
+                return a + b; // return the sum
+            }
+        `;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmedTokens).toBeLessThanOrEqual(result.originalTokens);
+        expect(result.percentSaved).toBeGreaterThan(0);
+    });
+
+    test('reports which rules were applied', () => {
+        const input = `// comment\nconsole.log('test');\nconst x = 1;`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.rulesApplied.length).toBeGreaterThan(0);
+    });
+
+});
