@@ -123,215 +123,387 @@ export class PromptPanel {
     }
 
     private _getHtmlContent(): string {
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Optimizer</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: var(--vscode-font-family);
-            background: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-            padding: 20px;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        h2 { font-size: 16px; font-weight: 500; opacity: 0.9; }
-        .tag-hint {
-            font-size: 12px;
-            opacity: 0.6;
-            background: var(--vscode-textBlockQuote-background);
-            padding: 8px 12px;
-            border-radius: 4px;
-            border-left: 3px solid var(--vscode-focusBorder);
-        }
-        textarea {
-            flex: 1;
-            width: 100%;
-            min-height: 180px;
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 4px;
-            padding: 10px;
-            font-family: var(--vscode-editor-font-family);
-            font-size: 13px;
-            resize: vertical;
-            outline: none;
-        }
-        textarea:focus {
-            border-color: var(--vscode-focusBorder);
-        }
-        .token-bar {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 12px;
-            opacity: 0.8;
-        }
-        .token-count {
-            font-weight: 500;
-            color: var(--vscode-textLink-foreground);
-        }
-        .btn-row {
-            display: flex;
-            gap: 10px;
-        }
-        button {
-            padding: 8px 18px;
-            border: none;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-            font-family: var(--vscode-font-family);
-        }
-        .btn-primary {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-        }
-        .btn-primary:hover { background: var(--vscode-button-hoverBackground); }
-        .btn-secondary {
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-        }
-        .result-box {
-            display: none;
-            background: var(--vscode-textBlockQuote-background);
-            border-radius: 4px;
-            padding: 14px;
-            font-size: 12px;
-            gap: 10px;
-            flex-direction: column;
-        }
-        .result-box.show { display: flex; }
-        .result-stats {
-            display: flex;
-            gap: 16px;
-            font-weight: 500;
-        }
-        .saved { color: #4caf50; }
-        .result-text {
-            background: var(--vscode-input-background);
-            padding: 10px;
-            border-radius: 4px;
-            white-space: pre-wrap;
-            font-family: var(--vscode-editor-font-family);
-            max-height: 150px;
-            overflow-y: auto;
-        }
-        .copy-btn {
-            align-self: flex-start;
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            padding: 6px 14px;
-            font-size: 12px;
-        }
-    </style>
-</head>
-<body>
-    <h2>⚡ Token Optimizer — Prompt Panel</h2>
+    return `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Token Optimizer</title>
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body {
+                    font-family: var(--vscode-font-family);
+                    background: var(--vscode-editor-background);
+                    color: var(--vscode-editor-foreground);
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    min-height: 100vh;
+                }
+                h2 { font-size: 15px; font-weight: 500; opacity: 0.9; }
+                .tag-hint {
+                    font-size: 12px;
+                    opacity: 0.6;
+                    background: var(--vscode-textBlockQuote-background);
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    border-left: 3px solid var(--vscode-focusBorder);
+                }
+                textarea {
+                    width: 100%;
+                    min-height: 160px;
+                    background: var(--vscode-input-background);
+                    color: var(--vscode-input-foreground);
+                    border: 1px solid var(--vscode-input-border);
+                    border-radius: 4px;
+                    padding: 10px;
+                    font-family: var(--vscode-editor-font-family);
+                    font-size: 13px;
+                    resize: vertical;
+                    outline: none;
+                }
+                textarea:focus { border-color: var(--vscode-focusBorder); }
+                .token-bar {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                    font-size: 12px;
+                    opacity: 0.8;
+                }
+                .token-count { font-weight: 500; color: var(--vscode-textLink-foreground); }
+                .tag-badge {
+                    background: #1a472a;
+                    color: #4caf50;
+                    padding: 2px 8px;
+                    border-radius: 999px;
+                    font-size: 11px;
+                    display: none;
+                }
+                .btn-row { display: flex; gap: 10px; }
+                button {
+                    padding: 8px 18px;
+                    border: none;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    cursor: pointer;
+                    font-family: var(--vscode-font-family);
+                }
+                .btn-primary {
+                    background: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                }
+                .btn-primary:hover { background: var(--vscode-button-hoverBackground); }
+                .btn-secondary {
+                    background: var(--vscode-button-secondaryBackground);
+                    color: var(--vscode-button-secondaryForeground);
+                }
 
-    <div class="tag-hint">
-        💡 Use tags: <strong>@optimize</strong> (trim waste) &nbsp;|&nbsp;
-        <strong>@compress</strong> (AI summarize) &nbsp;|&nbsp;
-        <strong>@scope:fn</strong> (current function only)
-    </div>
+                /* Result section */
+                .result-section { display: none; flex-direction: column; gap: 10px; }
+                .result-section.show { display: flex; }
 
-    <textarea
-        id="promptInput"
-        placeholder="Type your prompt here... Use @optimize to reduce tokens before sending to AI"
-    ></textarea>
+                /* Savings banner */
+                .savings-banner {
+                    display: flex;
+                    align-items: center;
+                    gap: 20px;
+                    padding: 12px 16px;
+                    background: #1a472a;
+                    border-radius: 6px;
+                    border: 1px solid #2d6a3f;
+                }
+                .savings-big {
+                    font-size: 22px;
+                    font-weight: 600;
+                    color: #4caf50;
+                }
+                .savings-detail { font-size: 12px; color: #a5d6a7; }
+                .savings-stats {
+                    display: flex;
+                    gap: 16px;
+                    margin-left: auto;
+                    font-size: 12px;
+                    color: #a5d6a7;
+                }
 
-    <div class="token-bar">
-        <span>Tokens: <span class="token-count" id="tokenCount">0</span></span>
-        <span id="tagDetected" style="color: #4caf50; display:none">✓ Tag detected</span>
-    </div>
+                /* Rules applied */
+                .rules-row {
+                    font-size: 11px;
+                    opacity: 0.55;
+                    padding: 2px 0;
+                }
 
-    <div class="btn-row">
-        <button class="btn-primary" onclick="optimize()">⚡ Optimize</button>
-        <button class="btn-secondary" onclick="clearAll()">Clear</button>
-    </div>
+                /* Diff view */
+                .diff-header {
+                    display: flex;
+                    gap: 10px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+                .diff-tab {
+                    padding: 5px 12px;
+                    border-radius: 4px 4px 0 0;
+                    cursor: pointer;
+                    opacity: 0.5;
+                    border: 1px solid transparent;
+                }
+                .diff-tab.active {
+                    opacity: 1;
+                    background: var(--vscode-input-background);
+                    border-color: var(--vscode-input-border);
+                    border-bottom-color: var(--vscode-input-background);
+                }
+                .diff-body {
+                    background: var(--vscode-input-background);
+                    border: 1px solid var(--vscode-input-border);
+                    border-radius: 0 4px 4px 4px;
+                    overflow: hidden;
+                }
+                .diff-pane { display: none; }
+                .diff-pane.active { display: block; }
+                .diff-lines {
+                    font-family: var(--vscode-editor-font-family);
+                    font-size: 12px;
+                    line-height: 1.6;
+                    max-height: 260px;
+                    overflow-y: auto;
+                    padding: 8px 0;
+                }
+                .diff-line {
+                    display: flex;
+                    padding: 0 12px;
+                    gap: 8px;
+                }
+                .diff-line:hover { background: rgba(255,255,255,0.03); }
+                .diff-line.removed {
+                    background: rgba(244, 67, 54, 0.12);
+                    color: #ef9a9a;
+                    text-decoration: line-through;
+                    opacity: 0.7;
+                }
+                .diff-line.added { background: rgba(76, 175, 80, 0.1); color: #a5d6a7; }
+                .diff-line.unchanged { color: var(--vscode-editor-foreground); }
+                .diff-line-num {
+                    min-width: 28px;
+                    opacity: 0.3;
+                    user-select: none;
+                    text-align: right;
+                }
+                .diff-line-text { white-space: pre-wrap; word-break: break-all; flex: 1; }
 
-    <div class="result-box" id="resultBox">
-        <div class="result-stats">
-            <span>Before: <span id="beforeTokens">0</span> tokens</span>
-            <span>After: <span id="afterTokens">0</span> tokens</span>
-            <span class="saved">Saved: <span id="savedTokens">0</span> tokens (<span id="savedPct">0</span>%)</span>
-        </div>
-        <div id="rulesApplied" style="font-size:11px; opacity:0.6; margin-top:4px;"></div>
-        <div class="result-text" id="resultText"></div>
-        <button class="copy-btn" onclick="copyResult()">📋 Copy to clipboard</button>
-    </div>
+                /* Copy button */
+                .copy-row { display: flex; gap: 8px; align-items: center; }
+                .copy-btn {
+                    background: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                    padding: 7px 16px;
+                    font-size: 12px;
+                }
+                .copy-confirm {
+                    font-size: 12px;
+                    color: #4caf50;
+                    display: none;
+                }
+            </style>
+        </head>
+        <body>
+            <h2>⚡ Token Optimizer</h2>
 
-    <script>
-        const vscode = acquireVsCodeApi();
-        const input = document.getElementById('promptInput');
-        const tokenCount = document.getElementById('tokenCount');
-        const tagDetected = document.getElementById('tagDetected');
+            <div class="tag-hint">
+                💡 Tags: <strong>@optimize</strong> · <strong>@compress</strong> · <strong>@scope:fn</strong> · <strong>@scope:file</strong>
+            </div>
 
-        // Live token count as user types
-        input.addEventListener('input', () => {
-            const text = input.value;
-            vscode.postMessage({ command: 'countTokens', text: text });
+            <textarea
+                id="promptInput"
+                placeholder="Type your prompt here... prefix with @optimize to reduce tokens"
+            ></textarea>
 
-            // Show tag detected hint
-            const hasTags = text.includes('@optimize') || 
-                           text.includes('@compress') || 
-                           text.includes('@scope:fn');
-            tagDetected.style.display = hasTags ? 'inline' : 'none';
-        });
+            <div class="token-bar">
+                <span>Tokens: <span class="token-count" id="tokenCount">0</span></span>
+                <span class="tag-badge" id="tagBadge">✓ Tag detected</span>
+            </div>
 
-        // Optimize button
-        function optimize() {
-            const text = input.value.trim();
-            if (!text) return;
-            vscode.postMessage({ command: 'optimize', text: text });
-        }
+            <div class="btn-row">
+                <button class="btn-primary" onclick="optimize()">⚡ Optimize</button>
+                <button class="btn-secondary" onclick="clearAll()">Clear</button>
+            </div>
 
-        // Clear button
-        function clearAll() {
-            input.value = '';
-            tokenCount.textContent = '0';
-            tagDetected.style.display = 'none';
-            document.getElementById('resultBox').classList.remove('show');
-        }
+            <!-- Result section -->
+            <div class="result-section" id="resultSection">
 
-        // Copy result to clipboard
-        function copyResult() {
-            const text = document.getElementById('resultText').textContent;
-            navigator.clipboard.writeText(text);
-        }
+                <!-- Savings banner -->
+                <div class="savings-banner">
+                    <div>
+                        <div class="savings-big" id="savingsPct">0% saved</div>
+                        <div class="savings-detail" id="savingsDetail">0 tokens removed</div>
+                    </div>
+                    <div class="savings-stats">
+                        <div>Before<br><strong id="beforeTokens">0</strong> tokens</div>
+                        <div>After<br><strong id="afterTokens">0</strong> tokens</div>
+                    </div>
+                </div>
 
-        // Handle messages from extension
-        window.addEventListener('message', event => {
-            const message = event.data;
+                <!-- Rules applied -->
+                <div class="rules-row" id="rulesRow"></div>
 
-            if (message.command === 'tokenCount') {
-                tokenCount.textContent = message.count;
-            }
+                <!-- Diff tabs -->
+                <div class="diff-header">
+                    <div class="diff-tab active" onclick="showTab('diff')" id="tab-diff">Diff view</div>
+                    <div class="diff-tab" onclick="showTab('optimized')" id="tab-optimized">Optimized</div>
+                    <div class="diff-tab" onclick="showTab('original')" id="tab-original">Original</div>
+                </div>
 
-            if (message.command === 'optimizeResult') {
-                document.getElementById('beforeTokens').textContent = message.originalTokens;
-                document.getElementById('afterTokens').textContent = message.optimizedTokens;
-                document.getElementById('savedTokens').textContent = message.saved;
-                document.getElementById('savedPct').textContent = message.savedPct;
-                document.getElementById('resultText').textContent = message.optimized;
-                    // NEW LINE — show which rules were applied
-                document.getElementById('rulesApplied').textContent = 
-                    message.rulesApplied && message.rulesApplied.length > 0
-                        ? '✓ ' + message.rulesApplied.join(' · ')
-                        : '';
-                document.getElementById('resultBox').classList.add('show');
-            }
-        });
-    </script>
-</body>
-</html>`;
+                <div class="diff-body">
+                    <!-- Diff view -->
+                    <div class="diff-pane active" id="pane-diff">
+                        <div class="diff-lines" id="diffLines"></div>
+                    </div>
+                    <!-- Optimized only -->
+                    <div class="diff-pane" id="pane-optimized">
+                        <div class="diff-lines" id="optimizedLines"></div>
+                    </div>
+                    <!-- Original only -->
+                    <div class="diff-pane" id="pane-original">
+                        <div class="diff-lines" id="originalLines"></div>
+                    </div>
+                </div>
+
+                <!-- Copy row -->
+                <div class="copy-row">
+                    <button class="copy-btn" onclick="copyOptimized()">📋 Copy optimized to clipboard</button>
+                    <span class="copy-confirm" id="copyConfirm">✓ Copied!</span>
+                </div>
+
+            </div>
+
+            <script>
+                const vscode = acquireVsCodeApi();
+                const input = document.getElementById('promptInput');
+
+                // Live token count
+                input.addEventListener('input', () => {
+                    const text = input.value;
+                    vscode.postMessage({ command: 'countTokens', text });
+                    const hasTags = /@(optimize|compress|scope)/.test(text);
+                    document.getElementById('tagBadge').style.display = hasTags ? 'inline' : 'none';
+                });
+
+                function optimize() {
+                    const text = input.value.trim();
+                    if (!text) return;
+                    vscode.postMessage({ command: 'optimize', text });
+                }
+
+                function clearAll() {
+                    input.value = '';
+                    document.getElementById('tokenCount').textContent = '0';
+                    document.getElementById('tagBadge').style.display = 'none';
+                    document.getElementById('resultSection').classList.remove('show');
+                }
+
+                function showTab(name) {
+                    ['diff','optimized','original'].forEach(t => {
+                        document.getElementById('tab-' + t).classList.toggle('active', t === name);
+                        document.getElementById('pane-' + t).classList.toggle('active', t === name);
+                    });
+                }
+
+                function copyOptimized() {
+                    const text = document.getElementById('optimizedLines').innerText
+                        .split('\\n').map(l => l.replace(/^\\s*\\d+\\s*/, '')).join('\\n');
+                    navigator.clipboard.writeText(window._optimizedText || '');
+                    const confirm = document.getElementById('copyConfirm');
+                    confirm.style.display = 'inline';
+                    setTimeout(() => confirm.style.display = 'none', 2000);
+                }
+
+                function buildDiffLines(original, optimized) {
+                    const origLines = original.split('\\n');
+                    const optLines = optimized.split('\\n');
+                    const diffEl = document.getElementById('diffLines');
+                    const optEl = document.getElementById('optimizedLines');
+                    const origEl = document.getElementById('originalLines');
+
+                    diffEl.innerHTML = '';
+                    optEl.innerHTML = '';
+                    origEl.innerHTML = '';
+
+                    // Simple line diff — mark removed and kept lines
+                    const optSet = new Set(optLines.map(l => l.trim()));
+
+                    origLines.forEach((line, i) => {
+                        const isKept = optSet.has(line.trim()) || line.trim() === '';
+                        const div = document.createElement('div');
+                        div.className = 'diff-line ' + (isKept ? 'unchanged' : 'removed');
+                        div.innerHTML =
+                            '<span class="diff-line-num">' + (i + 1) + '</span>' +
+                            '<span class="diff-line-text">' + escHtml(line || ' ') + '</span>';
+                        diffEl.appendChild(div);
+                    });
+
+                    optLines.forEach((line, i) => {
+                        const div = document.createElement('div');
+                        div.className = 'diff-line unchanged';
+                        div.innerHTML =
+                            '<span class="diff-line-num">' + (i + 1) + '</span>' +
+                            '<span class="diff-line-text">' + escHtml(line || ' ') + '</span>';
+                        optEl.appendChild(div);
+                    });
+
+                    origLines.forEach((line, i) => {
+                        const div = document.createElement('div');
+                        div.className = 'diff-line unchanged';
+                        div.innerHTML =
+                            '<span class="diff-line-num">' + (i + 1) + '</span>' +
+                            '<span class="diff-line-text">' + escHtml(line || ' ') + '</span>';
+                        origEl.appendChild(div);
+                    });
+                }
+
+                function escHtml(text) {
+                    return text
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                }
+
+                window.addEventListener('message', event => {
+                    const msg = event.data;
+
+                    if (msg.command === 'tokenCount') {
+                        document.getElementById('tokenCount').textContent = msg.count;
+                    }
+
+                    if (msg.command === 'optimizeResult') {
+                        // Store optimized text for clipboard
+                        window._optimizedText = msg.optimized;
+
+                        // Savings banner
+                        document.getElementById('savingsPct').textContent =
+                            msg.savedPct + '% saved';
+                        document.getElementById('savingsDetail').textContent =
+                            msg.saved + ' tokens removed';
+                        document.getElementById('beforeTokens').textContent = msg.originalTokens;
+                        document.getElementById('afterTokens').textContent = msg.optimizedTokens;
+
+                        // Rules
+                        document.getElementById('rulesRow').textContent =
+                            msg.rulesApplied && msg.rulesApplied.length
+                                ? '✓ ' + msg.rulesApplied.join(' · ')
+                                : '';
+
+                        // Build diff
+                        buildDiffLines(msg.original, msg.optimized);
+
+                        // Show result
+                        document.getElementById('resultSection').classList.add('show');
+                        showTab('diff');
+                    }
+                });
+            </script>
+        </body>
+        </html>`;
     }
 
     public dispose() {
