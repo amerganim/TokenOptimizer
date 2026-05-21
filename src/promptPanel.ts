@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { countTokens } from './tokenCounter';
 import { ContextExtractor } from './contextExtractor';
 import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from './tokenTrimmer';
+import { Metrics } from './metrics';
+import { getSettings, TrimmerPreset } from './settings';
 
 export class PromptPanel {
 
@@ -73,8 +75,20 @@ export class PromptPanel {
             .replace('@scope:file', '')
             .trim();
 
-        // Apply basic trimming
-        const trimResult = TokenTrimmer.trim(cleanPrompt, DEFAULT_OPTIONS);
+        // Pick trimmer preset from settings (@optimize / @compress can override)
+        const preset: TrimmerPreset = hasCompress
+            ? 'aggressive'
+            : hasOptimize
+                ? 'default'
+                : getSettings().trimmerPreset;
+        const options = preset === 'aggressive'
+            ? AGGRESSIVE_OPTIONS
+            : preset === 'light'
+                ? LIGHT_OPTIONS
+                : DEFAULT_OPTIONS;
+
+        // Apply trimming
+        const trimResult = TokenTrimmer.trim(cleanPrompt, options);
         let optimized = trimResult.trimmed;
         const rulesApplied = trimResult.rulesApplied;
 
@@ -104,6 +118,9 @@ export class PromptPanel {
         const savedPct = originalTokens > 0
             ? Math.round((saved / originalTokens) * 100)
             : 0;
+
+        // Record into metrics — drives status bar tooltip and showMetrics command
+        Metrics.recordOptimization(saved);
 
         this._panel.webview.postMessage({
             command: 'optimizeResult',

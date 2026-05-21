@@ -26,6 +26,14 @@
       {
         "command": "token-optimizer.openPromptPanel",
         "title": "Token Optimizer: Open Prompt Panel"
+      },
+      {
+        "command": "token-optimizer.showMetrics",
+        "title": "Token Optimizer: Show Savings Metrics"
+      },
+      {
+        "command": "token-optimizer.resetLifetimeMetrics",
+        "title": "Token Optimizer: Reset Lifetime Metrics"
       }
     ],
     "keybindings": [
@@ -35,7 +43,56 @@
         "mac": "cmd+shift+o",
         "when": "editorTextFocus"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Token Optimizer",
+      "properties": {
+        "tokenOptimizer.defaultModel": {
+          "type": "string",
+          "enum": ["gpt-4o", "gpt-4o-mini", "claude-sonnet", "claude-haiku"],
+          "default": "claude-sonnet",
+          "description": "Default model used for cost estimation and pricing display."
+        },
+        "tokenOptimizer.tokenBudget": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 100,
+          "description": "Target token budget per prompt. Used by future phases to size context windows."
+        },
+        "tokenOptimizer.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the live token count in the VS Code status bar."
+        },
+        "tokenOptimizer.statusBar.showCost": {
+          "type": "boolean",
+          "default": false,
+          "description": "Append the estimated cost (for default model) to the status bar token count."
+        },
+        "tokenOptimizer.trimmer.preset": {
+          "type": "string",
+          "enum": ["light", "default", "aggressive"],
+          "default": "default",
+          "description": "Trimmer preset used by the Prompt Panel when no explicit option is selected."
+        },
+        "tokenOptimizer.logCompression.preset": {
+          "type": "string",
+          "enum": ["mild", "balanced", "aggressive"],
+          "default": "balanced",
+          "description": "(Phase 2) Default preset for log/terminal output compression."
+        },
+        "tokenOptimizer.features.semanticSearch": {
+          "type": "boolean",
+          "default": false,
+          "description": "(Phase 8, opt-in) Enable local semantic search. Downloads a small embedding model on first use."
+        },
+        "tokenOptimizer.features.ollama": {
+          "type": "boolean",
+          "default": false,
+          "description": "(Phase 9, opt-in) Route compression tasks to a locally running Ollama server when available."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
