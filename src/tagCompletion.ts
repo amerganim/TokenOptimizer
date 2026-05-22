@@ -39,6 +39,18 @@ const TAGS = [
             '**Example:** `@scope:file @optimize Review this file for bugs`'
         ),
         insertText: '@scope:file '
+    },
+    {
+        label: '@log',
+        detail: 'Compress terminal/log output (open Prompt Panel)',
+        documentation: new vscode.MarkdownString(
+            '**@log** — Hint that this text is terminal/log output. ' +
+            'For best results, open the **Prompt Panel** (`Ctrl+Shift+O`) and switch to the **Log** tab. ' +
+            'You can also run **Token Optimizer: Compress Clipboard as Log** or right-click selected log text in an editor.\n\n' +
+            '**Strips:** ANSI codes, repeating timestamps, duplicate lines, noisy warning floods.\n\n' +
+            '**Preserves:** stack traces, error heads, first/last unique lines.'
+        ),
+        insertText: '@log '
     }
 ];
 

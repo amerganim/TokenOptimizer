@@ -34,8 +34,25 @@
       {
         "command": "token-optimizer.resetLifetimeMetrics",
         "title": "Token Optimizer: Reset Lifetime Metrics"
+      },
+      {
+        "command": "token-optimizer.compressClipboardAsLog",
+        "title": "Token Optimizer: Compress Clipboard as Log"
+      },
+      {
+        "command": "token-optimizer.compressSelectionAsLog",
+        "title": "Token Optimizer: Compress Selection as Log"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "token-optimizer.compressSelectionAsLog",
+          "when": "editorHasSelection",
+          "group": "9_cutcopypaste"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "token-optimizer.openPromptPanel",

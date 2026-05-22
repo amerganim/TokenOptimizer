@@ -3,8 +3,9 @@ import { countTokens } from './tokenCounter';
 import { ContextExtractor } from './contextExtractor';
 import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from './tokenTrimmer';
 import { PromptCompressor, COMPRESS_DEFAULT, COMPRESS_AGGRESSIVE, COMPRESS_LIGHT } from './promptCompressor';
+import { LogCompressor, LOG_MILD, LOG_BALANCED, LOG_AGGRESSIVE } from './logCompressor';
 import { Metrics } from './metrics';
-import { getSettings, TrimmerPreset, CompressorPreset } from './settings';
+import { getSettings, TrimmerPreset, CompressorPreset, LogCompressionPreset } from './settings';
 
 export class PromptPanel {
 
@@ -51,6 +52,9 @@ export class PromptPanel {
                         break;
                     case 'optimize':
                         this._handleOptimize(message.text);
+                        break;
+                    case 'compressLog':
+                        this._handleCompressLog(message.text);
                         break;
                 }
             },
@@ -155,9 +159,42 @@ export class PromptPanel {
         });
     }
 
+    private _handleCompressLog(logText: string) {
+        const preset: LogCompressionPreset = getSettings().logCompressionPreset;
+        const opts = preset === 'aggressive'
+            ? LOG_AGGRESSIVE
+            : preset === 'mild'
+                ? LOG_MILD
+                : LOG_BALANCED;
+
+        const result = LogCompressor.compress(logText, opts);
+
+        Metrics.recordOptimization(result.tokensSaved);
+
+        this._panel.webview.postMessage({
+            command: 'optimizeResult',
+            original: result.original,
+            optimized: result.compressed,
+            originalTokens: result.originalTokens,
+            optimizedTokens: result.compressedTokens,
+            saved: result.tokensSaved,
+            savedPct: result.percentSaved,
+            rulesApplied: result.rulesApplied.map(r => `log:${r}`),
+            logStats: result.stats,
+        });
+    }
+
     private _basicTrim(text: string): string {
         const result = TokenTrimmer.trim(text, DEFAULT_OPTIONS);
         return result.trimmed;
+    }
+
+    public loadLogIntoPanel(logText: string) {
+        this._panel.reveal(vscode.ViewColumn.Two);
+        this._panel.webview.postMessage({
+            command: 'loadLog',
+            text: logText,
+        });
     }
 
     private _getHtmlContent(): string {
@@ -330,6 +367,34 @@ export class PromptPanel {
                 }
                 .diff-line-text { white-space: pre-wrap; word-break: break-all; flex: 1; }
 
+                /* Mode tabs */
+                .mode-tabs {
+                    display: flex;
+                    gap: 4px;
+                    border-bottom: 1px solid var(--vscode-input-border);
+                    margin-bottom: 4px;
+                }
+                .mode-tab {
+                    padding: 8px 16px;
+                    cursor: pointer;
+                    font-size: 13px;
+                    font-weight: 500;
+                    opacity: 0.55;
+                    border-bottom: 2px solid transparent;
+                    user-select: none;
+                }
+                .mode-tab.active {
+                    opacity: 1;
+                    border-bottom-color: var(--vscode-focusBorder);
+                    color: var(--vscode-textLink-foreground);
+                }
+                .mode-tab:hover { opacity: 0.85; }
+                .mode-stats {
+                    font-size: 11px;
+                    opacity: 0.65;
+                    padding: 4px 0;
+                }
+
                 /* Copy button */
                 .copy-row { display: flex; gap: 8px; align-items: center; }
                 .copy-btn {
@@ -348,9 +413,18 @@ export class PromptPanel {
         <body>
             <h2>⚡ Token Optimizer</h2>
 
-            <div class="tag-hint">
+            <div class="mode-tabs">
+                <div class="mode-tab active" id="modeTab-prompt" onclick="setMode('prompt')">📝 Prompt</div>
+                <div class="mode-tab" id="modeTab-log" onclick="setMode('log')">📋 Log / Terminal Output</div>
+            </div>
+
+            <div class="tag-hint" id="hintPrompt">
                 💡 Tags: <strong>@optimize</strong> (code) · <strong>@compress</strong> (prose) · <strong>@scope:fn</strong> · <strong>@scope:file</strong>
                 <br/><span style="opacity:0.7">No tag = both. Code blocks inside <code>\`\`\`</code> are preserved.</span>
+            </div>
+            <div class="tag-hint" id="hintLog" style="display:none">
+                💡 Paste raw terminal/log output below. The compressor strips ANSI codes, normalizes timestamps, collapses duplicates, and preserves stack traces.
+                <br/><span style="opacity:0.7">Preset is configurable in Settings (<code>tokenOptimizer.logCompression.preset</code>).</span>
             </div>
 
             <textarea
@@ -364,7 +438,7 @@ export class PromptPanel {
             </div>
 
             <div class="btn-row">
-                <button class="btn-primary" onclick="optimize()">⚡ Optimize</button>
+                <button class="btn-primary" id="actionBtn" onclick="runAction()">⚡ Optimize</button>
                 <button class="btn-secondary" onclick="clearAll()">Clear</button>
             </div>
 
@@ -419,19 +493,41 @@ export class PromptPanel {
             <script>
                 const vscode = acquireVsCodeApi();
                 const input = document.getElementById('promptInput');
+                let currentMode = 'prompt'; // 'prompt' | 'log'
 
                 // Live token count
                 input.addEventListener('input', () => {
                     const text = input.value;
                     vscode.postMessage({ command: 'countTokens', text });
-                    const hasTags = /@(optimize|compress|scope)/.test(text);
+                    const hasTags = /@(optimize|compress|scope|log)/.test(text);
                     document.getElementById('tagBadge').style.display = hasTags ? 'inline' : 'none';
                 });
 
-                function optimize() {
-                    const text = input.value.trim();
-                    if (!text) return;
-                    vscode.postMessage({ command: 'optimize', text });
+                function setMode(mode) {
+                    currentMode = mode;
+                    document.getElementById('modeTab-prompt').classList.toggle('active', mode === 'prompt');
+                    document.getElementById('modeTab-log').classList.toggle('active', mode === 'log');
+                    document.getElementById('hintPrompt').style.display = mode === 'prompt' ? 'block' : 'none';
+                    document.getElementById('hintLog').style.display    = mode === 'log'    ? 'block' : 'none';
+                    const btn = document.getElementById('actionBtn');
+                    if (mode === 'log') {
+                        btn.textContent = '📋 Compress Log';
+                        input.placeholder = 'Paste raw terminal output or log lines here...';
+                    } else {
+                        btn.textContent = '⚡ Optimize';
+                        input.placeholder = 'Type your prompt here... prefix with @optimize to reduce tokens';
+                    }
+                    document.getElementById('resultSection').classList.remove('show');
+                }
+
+                function runAction() {
+                    const text = input.value;
+                    if (!text.trim()) return;
+                    if (currentMode === 'log') {
+                        vscode.postMessage({ command: 'compressLog', text });
+                    } else {
+                        vscode.postMessage({ command: 'optimize', text: text.trim() });
+                    }
                 }
 
                 function clearAll() {
@@ -514,6 +610,14 @@ export class PromptPanel {
                         document.getElementById('tokenCount').textContent = msg.count;
                     }
 
+                    if (msg.command === 'loadLog') {
+                        // Triggered by "Compress Clipboard / Terminal Selection" commands
+                        setMode('log');
+                        input.value = msg.text || '';
+                        vscode.postMessage({ command: 'countTokens', text: input.value });
+                        runAction();
+                    }
+
                     if (msg.command === 'optimizeResult') {
                         // Store optimized text for clipboard
                         window._optimizedText = msg.optimized;
@@ -527,10 +631,19 @@ export class PromptPanel {
                         document.getElementById('afterTokens').textContent = msg.optimizedTokens;
 
                         // Rules
-                        document.getElementById('rulesRow').textContent =
-                            msg.rulesApplied && msg.rulesApplied.length
-                                ? '✓ ' + msg.rulesApplied.join(' · ')
-                                : '';
+                        let rulesText = msg.rulesApplied && msg.rulesApplied.length
+                            ? '✓ ' + msg.rulesApplied.join(' · ')
+                            : '';
+                        if (msg.logStats) {
+                            const s = msg.logStats;
+                            rulesText += (rulesText ? '   ' : '')
+                                + '· lines: ' + s.originalLines + ' → ' + s.compressedLines
+                                + (s.duplicatesCollapsed ? '  · dupes: ' + s.duplicatesCollapsed : '')
+                                + (s.patternsCollapsed   ? '  · patterns: ' + s.patternsCollapsed : '')
+                                + (s.warningsGrouped     ? '  · warns: ' + s.warningsGrouped : '')
+                                + (s.stackTracesPreserved? '  · stacks kept: ' + s.stackTracesPreserved : '');
+                        }
+                        document.getElementById('rulesRow').textContent = rulesText;
 
                         // Build diff
                         buildDiffLines(msg.original, msg.optimized);
