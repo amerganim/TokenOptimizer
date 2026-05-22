@@ -41,6 +41,42 @@ const TAGS = [
         insertText: '@scope:file '
     },
     {
+        label: '@scope:imports',
+        detail: 'Include only the import block of the current file',
+        documentation: new vscode.MarkdownString(
+            '**@scope:imports** — Extracts only the top-of-file imports (JS/TS/Python/Java/C#/C++/Ruby/Rust/PHP).\n\n' +
+            '**Example:** `@scope:imports What deps does this module pull in?`'
+        ),
+        insertText: '@scope:imports '
+    },
+    {
+        label: '@scope:types',
+        detail: 'Include only interfaces, types, enums, structs',
+        documentation: new vscode.MarkdownString(
+            '**@scope:types** — Uses VS Code symbol API to extract every interface / type / enum / struct in the current file. Bodies of functions and classes are skipped.\n\n' +
+            '**Example:** `@scope:types Suggest improvements to this type model`'
+        ),
+        insertText: '@scope:types '
+    },
+    {
+        label: '@scope:symbol:',
+        detail: 'Include one named symbol (function, method, var…)',
+        documentation: new vscode.MarkdownString(
+            '**@scope:symbol:<name>** — Extracts a single symbol from the current file by name (exact, case-insensitive, or substring match).\n\n' +
+            '**Example:** `@scope:symbol:authenticate Refactor this`'
+        ),
+        insertText: '@scope:symbol:'
+    },
+    {
+        label: '@scope:class:',
+        detail: 'Include one named class with all its methods',
+        documentation: new vscode.MarkdownString(
+            '**@scope:class:<name>** — Extracts the entire body of a named class (and its nested members) from the current file.\n\n' +
+            '**Example:** `@scope:class:LoginHandler Review this class`'
+        ),
+        insertText: '@scope:class:'
+    },
+    {
         label: '@log',
         detail: 'Compress terminal/log output (open Prompt Panel)',
         documentation: new vscode.MarkdownString(

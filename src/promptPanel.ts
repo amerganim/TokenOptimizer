@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import { countTokens } from './tokenCounter';
-import { ContextExtractor } from './contextExtractor';
+import { ContextExtractor } from './contextExtractor'; // legacy fallback
 import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from './tokenTrimmer';
 import { PromptCompressor, COMPRESS_DEFAULT, COMPRESS_AGGRESSIVE, COMPRESS_LIGHT } from './promptCompressor';
 import { LogCompressor, LOG_MILD, LOG_BALANCED, LOG_AGGRESSIVE } from './logCompressor';
+import { SymbolExtractor, ExtractedSymbol } from './symbolExtractor';
+import { parseScopeTags, ScopeTag } from './symbolHelpers';
 import { Metrics } from './metrics';
 import { getSettings, TrimmerPreset, CompressorPreset, LogCompressionPreset } from './settings';
 
@@ -56,6 +58,9 @@ export class PromptPanel {
                     case 'compressLog':
                         this._handleCompressLog(message.text);
                         break;
+                    case 'pickSymbols':
+                        this._handlePickSymbols();
+                        break;
                 }
             },
             null,
@@ -66,18 +71,18 @@ export class PromptPanel {
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
 
-    private _handleOptimize(promptText: string) {
-        const hasOptimize  = promptText.includes('@optimize');
-        const hasCompress  = promptText.includes('@compress');
-        const hasScopeFn   = promptText.includes('@scope:fn');
-        const hasScopeFile = promptText.includes('@scope:file');
+    private async _handleOptimize(promptText: string): Promise<void> {
+        const hasOptimize = promptText.includes('@optimize');
+        const hasCompress = promptText.includes('@compress');
 
-        // Strip tags from prompt
-        let cleanPrompt = promptText
-            .replace('@optimize', '')
-            .replace('@compress', '')
-            .replace('@scope:fn', '')
-            .replace('@scope:file', '')
+        // Parse all @scope:* tags and strip them from the prompt
+        const { scopes, stripped: scopeStripped } = parseScopeTags(promptText);
+
+        // Strip @optimize / @compress flags from the user text
+        let cleanPrompt = scopeStripped
+            .replace(/@optimize\b/g, '')
+            .replace(/@compress\b/g, '')
+            .replace(/[ \t]{2,}/g, ' ')
             .trim();
 
         const settings = getSettings();
@@ -92,7 +97,6 @@ export class PromptPanel {
         let working = cleanPrompt;
         const rulesApplied: string[] = [];
 
-        // 1) Linguistic compression first — code blocks are preserved internally
         if (runCompressor) {
             const cPreset: CompressorPreset = settings.compressorPreset;
             const cOpts = cPreset === 'aggressive'
@@ -105,7 +109,6 @@ export class PromptPanel {
             cResult.rulesApplied.forEach(r => rulesApplied.push(`compress:${r}`));
         }
 
-        // 2) Code trimming second — operates on the result
         if (runTrimmer) {
             const tPreset: TrimmerPreset = settings.trimmerPreset;
             const tOpts = tPreset === 'aggressive'
@@ -120,20 +123,19 @@ export class PromptPanel {
 
         let optimized = working;
 
-        // Handle @scope:fn / @scope:file — inject editor context
-        if (hasScopeFn || hasScopeFile) {
+        // Resolve every scope tag against the active editor
+        if (scopes.length > 0) {
             const editor = vscode.window.activeTextEditor;
-            if (editor) {
-                const scope = hasScopeFn ? 'fn' : 'file';
-                const extracted = ContextExtractor.extractForScope(scope, editor);
-                if (extracted) {
-                    const label = extracted.functionName
-                        ? `function "${extracted.functionName}"`
-                        : `lines ${extracted.startLine + 1}–${extracted.endLine + 1}`;
-                    optimized += `\n\n[Context: ${label}]\n\`\`\`\n${extracted.text}\n\`\`\``;
-                }
+            if (!editor) {
+                optimized += '\n\n[No file open — open a file and place cursor inside it before using @scope tags]';
             } else {
-                optimized += '\n\n[No file open — open a file and place cursor inside a function]';
+                for (const scope of scopes) {
+                    const block = await this._resolveScope(scope, editor);
+                    if (block) {
+                        optimized += `\n\n${block}`;
+                        rulesApplied.push(`scope:${scope.kind}${scope.name ? `:${scope.name}` : ''}`);
+                    }
+                }
             }
         }
 
@@ -156,6 +158,104 @@ export class PromptPanel {
             saved: saved,
             savedPct: savedPct,
             rulesApplied: rulesApplied
+        });
+    }
+
+    private async _resolveScope(
+        scope: ScopeTag,
+        editor: vscode.TextEditor,
+    ): Promise<string | null> {
+        const doc = editor.document;
+
+        const fmtBlock = (header: string, body: string): string =>
+            `[Context: ${header}]\n\`\`\`\n${body}\n\`\`\``;
+
+        switch (scope.kind) {
+            case 'fn': {
+                // Try the smart VS Code symbol API first; fall back to regex extractor
+                const sym = await SymbolExtractor.getSymbolAtCursor(doc, editor.selection.active);
+                if (sym) {
+                    return fmtBlock(
+                        `${sym.kind} "${sym.shortName}" (lines ${sym.startLine + 1}–${sym.endLine + 1})`,
+                        sym.text,
+                    );
+                }
+                const fallback = ContextExtractor.extractForScope('fn', editor);
+                if (!fallback) return null;
+                const label = fallback.functionName
+                    ? `function "${fallback.functionName}"`
+                    : `lines ${fallback.startLine + 1}–${fallback.endLine + 1}`;
+                return fmtBlock(label, fallback.text);
+            }
+            case 'file':
+                return fmtBlock(`file ${doc.fileName.split(/[\\/]/).pop()}`, doc.getText());
+
+            case 'imports': {
+                const imp = SymbolExtractor.extractImports(doc);
+                if (!imp) return '[No imports detected at top of file]';
+                return fmtBlock(
+                    `imports (lines ${imp.startLine + 1}–${imp.endLine + 1})`,
+                    imp.text,
+                );
+            }
+            case 'types': {
+                const types = await SymbolExtractor.extractTypes(doc);
+                if (types.length === 0) return '[No types/interfaces/enums found in file]';
+                const merged = types
+                    .map(t => `// ${t.kind} ${t.shortName} (line ${t.startLine + 1})\n${t.text}`)
+                    .join('\n\n');
+                return fmtBlock(`${types.length} type(s)`, merged);
+            }
+            case 'symbol': {
+                if (!scope.name) return '[Missing symbol name: use @scope:symbol:<name>]';
+                const sym = await SymbolExtractor.findSymbol(doc, scope.name);
+                if (!sym) return `[Symbol "${scope.name}" not found in file]`;
+                return fmtBlock(
+                    `${sym.kind} "${sym.shortName}" (lines ${sym.startLine + 1}–${sym.endLine + 1})`,
+                    sym.text,
+                );
+            }
+            case 'class': {
+                if (!scope.name) return '[Missing class name: use @scope:class:<name>]';
+                const cls = await SymbolExtractor.extractClass(doc, scope.name);
+                if (!cls) return `[Class "${scope.name}" not found in file]`;
+                return fmtBlock(
+                    `class "${cls.shortName}" (lines ${cls.startLine + 1}–${cls.endLine + 1})`,
+                    cls.text,
+                );
+            }
+        }
+    }
+
+    private async _handlePickSymbols(): Promise<void> {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showWarningMessage('Token Optimizer: open a file first.');
+            return;
+        }
+        const symbols = await SymbolExtractor.getAllSymbols(editor.document);
+        if (symbols.length === 0) {
+            vscode.window.showInformationMessage('Token Optimizer: no symbols found in this file.');
+            return;
+        }
+        const items: (vscode.QuickPickItem & { _sym: ExtractedSymbol })[] = symbols.map(s => ({
+            label: `$(symbol-${s.kind}) ${s.shortName}`,
+            description: `${s.kind} · line ${s.startLine + 1}`,
+            detail: `${s.tokens.toLocaleString()} tokens`,
+            _sym: s,
+        }));
+        const picked = await vscode.window.showQuickPick(items, {
+            canPickMany: true,
+            placeHolder: `Pick one or more symbols from ${editor.document.fileName.split(/[\\/]/).pop()}`,
+            matchOnDescription: true,
+        });
+        if (!picked || picked.length === 0) return;
+
+        // Inject @scope:symbol tags into the prompt textarea
+        const tags = picked.map(p => `@scope:symbol:${p._sym.shortName}`).join(' ');
+        this._panel.webview.postMessage({
+            command: 'insertText',
+            text: tags + ' ',
         });
     }
 
@@ -439,6 +539,7 @@ export class PromptPanel {
 
             <div class="btn-row">
                 <button class="btn-primary" id="actionBtn" onclick="runAction()">⚡ Optimize</button>
+                <button class="btn-secondary" onclick="pickSymbols()">📐 Pick Symbols…</button>
                 <button class="btn-secondary" onclick="clearAll()">Clear</button>
             </div>
 
@@ -537,6 +638,10 @@ export class PromptPanel {
                     document.getElementById('resultSection').classList.remove('show');
                 }
 
+                function pickSymbols() {
+                    vscode.postMessage({ command: 'pickSymbols' });
+                }
+
                 function showTab(name) {
                     ['diff','optimized','original'].forEach(t => {
                         document.getElementById('tab-' + t).classList.toggle('active', t === name);
@@ -616,6 +721,15 @@ export class PromptPanel {
                         input.value = msg.text || '';
                         vscode.postMessage({ command: 'countTokens', text: input.value });
                         runAction();
+                    }
+
+                    if (msg.command === 'insertText') {
+                        // Triggered by "Pick Symbols…" — append to current prompt
+                        const cur = input.value;
+                        input.value = cur + (cur && !cur.endsWith(' ') ? ' ' : '') + (msg.text || '');
+                        input.focus();
+                        vscode.postMessage({ command: 'countTokens', text: input.value });
+                        document.getElementById('tagBadge').style.display = 'inline';
                     }
 
                     if (msg.command === 'optimizeResult') {

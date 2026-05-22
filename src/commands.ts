@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import { countTokens, estimateCost } from './tokenCounter';
 import { PromptPanel } from './promptPanel';
 import { Metrics } from './metrics';
-import { getSettings, LogCompressionPreset } from './settings';
+import { getSettings, LogCompressionPreset, TrimmerPreset, CompressorPreset } from './settings';
 import { LogCompressor, LOG_MILD, LOG_BALANCED, LOG_AGGRESSIVE, LogCompressOptions } from './logCompressor';
+import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from './tokenTrimmer';
+import { PromptCompressor, COMPRESS_DEFAULT, COMPRESS_AGGRESSIVE, COMPRESS_LIGHT } from './promptCompressor';
 
 export function activateCommands(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -16,6 +18,52 @@ export function activateCommands(context: vscode.ExtensionContext) {
             () => compressClipboardAsLog(context)),
         vscode.commands.registerCommand('token-optimizer.compressSelectionAsLog',
             () => compressSelectionAsLog(context)),
+        vscode.commands.registerCommand('token-optimizer.optimizeSelection',
+            optimizeSelection),
+    );
+}
+
+async function optimizeSelection() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showWarningMessage('Token Optimizer: no active editor.');
+        return;
+    }
+    if (editor.selection.isEmpty) {
+        vscode.window.showWarningMessage('Token Optimizer: select some text first.');
+        return;
+    }
+    const original = editor.document.getText(editor.selection);
+    const originalTokens = countTokens(original);
+
+    const settings = getSettings();
+    const cPreset: CompressorPreset = settings.compressorPreset;
+    const tPreset: TrimmerPreset = settings.trimmerPreset;
+    const cOpts = cPreset === 'aggressive' ? COMPRESS_AGGRESSIVE
+        : cPreset === 'light' ? COMPRESS_LIGHT
+        : COMPRESS_DEFAULT;
+    const tOpts = tPreset === 'aggressive' ? AGGRESSIVE_OPTIONS
+        : tPreset === 'light' ? LIGHT_OPTIONS
+        : DEFAULT_OPTIONS;
+
+    const compressed = PromptCompressor.compress(original, cOpts).compressed;
+    const final = TokenTrimmer.trim(compressed, tOpts).trimmed;
+
+    const newTokens = countTokens(final);
+    const saved = originalTokens - newTokens;
+    if (saved <= 0) {
+        vscode.window.showInformationMessage(
+            `Token Optimizer: selection already minimal (${originalTokens} tokens).`,
+        );
+        return;
+    }
+
+    await editor.edit(eb => eb.replace(editor.selection, final));
+    Metrics.recordOptimization(saved);
+
+    const pct = Math.round((saved / originalTokens) * 100);
+    vscode.window.showInformationMessage(
+        `✂️ Optimized selection: ${originalTokens} → ${newTokens} tokens (saved ${saved}, ${pct}%). Press Ctrl+Z to undo.`,
     );
 }
 

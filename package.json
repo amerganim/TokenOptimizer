@@ -42,14 +42,23 @@
       {
         "command": "token-optimizer.compressSelectionAsLog",
         "title": "Token Optimizer: Compress Selection as Log"
+      },
+      {
+        "command": "token-optimizer.optimizeSelection",
+        "title": "Token Optimizer: Optimize Selection (Replace In Place)"
       }
     ],
     "menus": {
       "editor/context": [
         {
+          "command": "token-optimizer.optimizeSelection",
+          "when": "editorHasSelection",
+          "group": "9_cutcopypaste@1"
+        },
+        {
           "command": "token-optimizer.compressSelectionAsLog",
           "when": "editorHasSelection",
-          "group": "9_cutcopypaste"
+          "group": "9_cutcopypaste@2"
         }
       ]
     },
