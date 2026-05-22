@@ -109,11 +109,13 @@ export function matchSymbolName<T extends NamedSymbol>(symbols: T[], query: stri
  * Returns the parsed scopes plus the prompt with those tags removed.
  */
 export interface ScopeTag {
-    kind: 'fn' | 'file' | 'imports' | 'types' | 'symbol' | 'class';
+    kind: 'fn' | 'file' | 'imports' | 'types' | 'symbol' | 'class'
+        | 'diff' | 'staged' | 'last-commit';
     name?: string;
 }
 
-const SCOPE_TAG_PATTERN = /@scope:(fn|file|imports|types|symbol|class)(?::([\w.$<>-]+))?/g;
+const SCOPE_TAG_PATTERN =
+    /@scope:(fn|file|imports|types|symbol|class|diff|staged|last-commit)(?::([\w.$<>-]+))?/g;
 
 export function parseScopeTags(prompt: string): { scopes: ScopeTag[]; stripped: string } {
     const scopes: ScopeTag[] = [];

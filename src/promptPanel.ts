@@ -6,6 +6,7 @@ import { PromptCompressor, COMPRESS_DEFAULT, COMPRESS_AGGRESSIVE, COMPRESS_LIGHT
 import { LogCompressor, LOG_MILD, LOG_BALANCED, LOG_AGGRESSIVE } from './logCompressor';
 import { SymbolExtractor, ExtractedSymbol } from './symbolExtractor';
 import { parseScopeTags, ScopeTag } from './symbolHelpers';
+import { GitContext, GitDiffResult } from './gitContext';
 import { Metrics } from './metrics';
 import { getSettings, TrimmerPreset, CompressorPreset, LogCompressionPreset } from './settings';
 
@@ -121,54 +122,82 @@ export class PromptPanel {
             tResult.rulesApplied.forEach(r => rulesApplied.push(`trim:${r}`));
         }
 
-        let optimized = working;
+        // `working` now holds the compressed/trimmed PROSE. Capture this before scope
+        // injection so we can report prose savings independently from added context.
+        const proseOutput = working;
 
-        // Resolve every scope tag against the active editor
+        // Build context blocks separately and track their token cost.
+        // Scope context is ADDITIVE — it should not be counted against compression savings.
+        let contextBlocks = '';
         if (scopes.length > 0) {
             const editor = vscode.window.activeTextEditor;
-            if (!editor) {
-                optimized += '\n\n[No file open — open a file and place cursor inside it before using @scope tags]';
-            } else {
-                for (const scope of scopes) {
-                    const block = await this._resolveScope(scope, editor);
-                    if (block) {
-                        optimized += `\n\n${block}`;
-                        rulesApplied.push(`scope:${scope.kind}${scope.name ? `:${scope.name}` : ''}`);
-                    }
+            for (const scope of scopes) {
+                const block = await this._resolveScope(scope, editor);
+                if (block) {
+                    contextBlocks += `\n\n${block}`;
+                    rulesApplied.push(`scope:${scope.kind}${scope.name ? `:${scope.name}` : ''}`);
                 }
             }
         }
 
-        const originalTokens = countTokens(promptText);
-        const optimizedTokens = countTokens(optimized);
-        const saved = originalTokens - optimizedTokens;
-        const savedPct = originalTokens > 0
-            ? Math.round((saved / originalTokens) * 100)
+        const optimized = proseOutput + contextBlocks;
+
+        // Honest accounting:
+        //   proseInputTokens   = user text after tag stripping (what we tried to compress)
+        //   proseOutputTokens  = result of compress + trim
+        //   proseSaved         = proseInputTokens - proseOutputTokens   (always >= 0)
+        //   contextTokens      = tokens added by @scope:* blocks        (additive)
+        //   totalOutputTokens  = proseOutput + contextBlocks
+        const originalTokens   = countTokens(promptText);
+        const proseInputTokens  = countTokens(cleanPrompt);
+        const proseOutputTokens = countTokens(proseOutput);
+        const contextTokens     = countTokens(contextBlocks);
+        const totalOutputTokens = countTokens(optimized);
+        const proseSaved        = Math.max(0, proseInputTokens - proseOutputTokens);
+        const proseSavedPct     = proseInputTokens > 0
+            ? Math.round((proseSaved / proseInputTokens) * 100)
             : 0;
 
-        // Record into metrics — drives status bar tooltip and showMetrics command
-        Metrics.recordOptimization(saved);
+        // Only the prose compression counts as "saved tokens" in lifetime metrics.
+        Metrics.recordOptimization(proseSaved);
 
         this._panel.webview.postMessage({
             command: 'optimizeResult',
             original: promptText,
             optimized: optimized,
+            // Backwards-compat fields (legacy banner used these)
             originalTokens: originalTokens,
-            optimizedTokens: optimizedTokens,
-            saved: saved,
-            savedPct: savedPct,
-            rulesApplied: rulesApplied
+            optimizedTokens: totalOutputTokens,
+            saved: proseSaved,
+            savedPct: proseSavedPct,
+            // New itemized breakdown — UI prefers these
+            proseInputTokens,
+            proseOutputTokens,
+            proseSaved,
+            proseSavedPct,
+            contextTokens,
+            totalOutputTokens,
+            rulesApplied,
         });
     }
 
     private async _resolveScope(
         scope: ScopeTag,
-        editor: vscode.TextEditor,
+        editor: vscode.TextEditor | undefined,
     ): Promise<string | null> {
-        const doc = editor.document;
-
         const fmtBlock = (header: string, body: string): string =>
             `[Context: ${header}]\n\`\`\`\n${body}\n\`\`\``;
+
+        // Git scopes don't need an editor — only a workspace folder
+        if (scope.kind === 'diff' || scope.kind === 'staged' || scope.kind === 'last-commit') {
+            return this._resolveGitScope(scope.kind);
+        }
+
+        // All other scopes need an active editor
+        if (!editor) {
+            return `[@scope:${scope.kind} needs a file open — click into a code file before optimizing]`;
+        }
+        const doc = editor.document;
 
         switch (scope.kind) {
             case 'fn': {
@@ -225,6 +254,42 @@ export class PromptPanel {
                 );
             }
         }
+    }
+
+    private async _resolveGitScope(
+        kind: 'diff' | 'staged' | 'last-commit',
+    ): Promise<string | null> {
+        const cwd = GitContext.resolveCwd();
+        if (!cwd) {
+            const folders = vscode.workspace.workspaceFolders;
+            const editor = vscode.window.activeTextEditor;
+            return [
+                `[git ${kind} aborted — no cwd resolved]`,
+                `  workspaceFolders: ${folders?.length ? folders.map(f => f.uri.fsPath).join(' | ') : '(none)'}`,
+                `  activeEditor: ${editor ? editor.document.uri.toString() : '(none)'}`,
+                `  Fix: open a folder via File → Open Folder…`,
+            ].join('\n');
+        }
+        const isRepo = await GitContext.isGitRepo(cwd);
+        if (!isRepo) return `[git ${kind} aborted — ${cwd} is not a git repository (no .git dir found)]`;
+
+        const budget = getSettings().gitMaxDiffTokens;
+        let result: GitDiffResult | null = null;
+        try {
+            if (kind === 'diff')        result = await GitContext.getUnstagedDiff(cwd, budget);
+            else if (kind === 'staged') result = await GitContext.getStagedDiff(cwd, budget);
+            else                        result = await GitContext.getLastCommitDiff(cwd, budget);
+        } catch (err: unknown) {
+            return `[git ${kind} failed in ${cwd}: ${err instanceof Error ? err.message : String(err)}]`;
+        }
+        if (!result) {
+            return `[No ${kind === 'diff' ? 'unstaged' : kind === 'staged' ? 'staged' : 'recent'} changes in ${cwd}]`;
+        }
+        const summary = GitContext.summaryLine(result);
+        const truncationNote = result.tokens < result.rawTokens
+            ? `  (truncated from ${result.rawTokens} → ${result.tokens} tokens, budget ${budget})`
+            : '';
+        return `[Context: ${summary}${truncationNote}]\n\`\`\`diff\n${result.truncatedDiff}\n\`\`\``;
     }
 
     private async _handlePickSymbols(): Promise<void> {
@@ -550,11 +615,12 @@ export class PromptPanel {
                 <div class="savings-banner">
                     <div>
                         <div class="savings-big" id="savingsPct">0% saved</div>
-                        <div class="savings-detail" id="savingsDetail">0 tokens removed</div>
+                        <div class="savings-detail" id="savingsDetail">0 tokens removed from prose</div>
                     </div>
                     <div class="savings-stats">
-                        <div>Before<br><strong id="beforeTokens">0</strong> tokens</div>
-                        <div>After<br><strong id="afterTokens">0</strong> tokens</div>
+                        <div>Prose<br><strong id="beforeTokens">0</strong> → <strong id="afterTokens">0</strong></div>
+                        <div id="contextStats" style="display:none">Context added<br>+<strong id="contextTokensEl">0</strong></div>
+                        <div>Total out<br><strong id="totalTokens">0</strong> tokens</div>
                     </div>
                 </div>
 
@@ -736,13 +802,30 @@ export class PromptPanel {
                         // Store optimized text for clipboard
                         window._optimizedText = msg.optimized;
 
-                        // Savings banner
+                        // Prefer itemized fields; fall back for log-mode messages that don't send them
+                        const proseIn  = (msg.proseInputTokens  != null) ? msg.proseInputTokens  : msg.originalTokens;
+                        const proseOut = (msg.proseOutputTokens != null) ? msg.proseOutputTokens : msg.optimizedTokens;
+                        const ctxTok   = (msg.contextTokens     != null) ? msg.contextTokens     : 0;
+                        const totalOut = (msg.totalOutputTokens != null) ? msg.totalOutputTokens : msg.optimizedTokens;
+                        const savedPct = (msg.proseSavedPct     != null) ? msg.proseSavedPct     : msg.savedPct;
+                        const saved    = (msg.proseSaved        != null) ? msg.proseSaved        : msg.saved;
+
+                        // Savings banner — now scoped to prose, not the whole output
                         document.getElementById('savingsPct').textContent =
-                            msg.savedPct + '% saved';
+                            savedPct + '% saved';
                         document.getElementById('savingsDetail').textContent =
-                            msg.saved + ' tokens removed';
-                        document.getElementById('beforeTokens').textContent = msg.originalTokens;
-                        document.getElementById('afterTokens').textContent = msg.optimizedTokens;
+                            saved + (msg.logStats ? ' tokens removed' : ' tokens removed from prose');
+                        document.getElementById('beforeTokens').textContent = proseIn;
+                        document.getElementById('afterTokens').textContent  = proseOut;
+                        document.getElementById('totalTokens').textContent  = totalOut;
+
+                        const ctxEl = document.getElementById('contextStats');
+                        if (ctxTok > 0) {
+                            document.getElementById('contextTokensEl').textContent = ctxTok;
+                            ctxEl.style.display = '';
+                        } else {
+                            ctxEl.style.display = 'none';
+                        }
 
                         // Rules
                         let rulesText = msg.rulesApplied && msg.rulesApplied.length

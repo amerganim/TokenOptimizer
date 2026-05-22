@@ -6,6 +6,7 @@ import { getSettings, LogCompressionPreset, TrimmerPreset, CompressorPreset } fr
 import { LogCompressor, LOG_MILD, LOG_BALANCED, LOG_AGGRESSIVE, LogCompressOptions } from './logCompressor';
 import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from './tokenTrimmer';
 import { PromptCompressor, COMPRESS_DEFAULT, COMPRESS_AGGRESSIVE, COMPRESS_LIGHT } from './promptCompressor';
+import { GitContext } from './gitContext';
 
 export function activateCommands(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -20,7 +21,63 @@ export function activateCommands(context: vscode.ExtensionContext) {
             () => compressSelectionAsLog(context)),
         vscode.commands.registerCommand('token-optimizer.optimizeSelection',
             optimizeSelection),
+        vscode.commands.registerCommand('token-optimizer.diagnose', diagnose),
     );
+}
+
+async function diagnose() {
+    const editor = vscode.window.activeTextEditor;
+    const folders = vscode.workspace.workspaceFolders;
+    const cwd = GitContext.resolveCwd();
+    const isRepo = cwd ? await GitContext.isGitRepo(cwd) : false;
+
+    const out = vscode.window.createOutputChannel('Token Optimizer');
+    out.clear();
+    out.appendLine('=== Token Optimizer Diagnostics ===');
+    out.appendLine('');
+    out.appendLine(`activeTextEditor: ${editor ? editor.document.uri.toString() : '(none)'}`);
+    out.appendLine(`activeTextEditor scheme: ${editor ? editor.document.uri.scheme : '(none)'}`);
+    out.appendLine('');
+    out.appendLine(`workspace.workspaceFolders count: ${folders?.length ?? 0}`);
+    folders?.forEach((f, i) => out.appendLine(`  [${i}] ${f.uri.fsPath}`));
+    out.appendLine('');
+    out.appendLine(`GitContext.resolveCwd(): ${cwd ?? '(null)'}`);
+    out.appendLine(`Is git repo at cwd: ${isRepo}`);
+    out.appendLine('');
+
+    if (cwd && isRepo) {
+        try {
+            const r = await GitContext.getUnstagedDiff(cwd, 1_000_000);
+            if (r) {
+                out.appendLine(`git diff: ${r.stat.files} files, +${r.stat.insertions}, -${r.stat.deletions}, ${r.rawTokens} tokens`);
+            } else {
+                out.appendLine('git diff: no unstaged changes');
+            }
+        } catch (e) {
+            out.appendLine(`git diff: error ${e instanceof Error ? e.message : String(e)}`);
+        }
+        try {
+            const r = await GitContext.getStagedDiff(cwd, 1_000_000);
+            if (r) {
+                out.appendLine(`git diff --cached: ${r.stat.files} files, +${r.stat.insertions}, -${r.stat.deletions}, ${r.rawTokens} tokens`);
+            } else {
+                out.appendLine('git diff --cached: no staged changes');
+            }
+        } catch (e) {
+            out.appendLine(`git diff --cached: error ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }
+
+    const settings = getSettings();
+    out.appendLine('');
+    out.appendLine(`Settings:`);
+    out.appendLine(`  defaultModel: ${settings.defaultModel}`);
+    out.appendLine(`  trimmerPreset: ${settings.trimmerPreset}`);
+    out.appendLine(`  compressorPreset: ${settings.compressorPreset}`);
+    out.appendLine(`  logCompressionPreset: ${settings.logCompressionPreset}`);
+    out.appendLine(`  gitMaxDiffTokens: ${settings.gitMaxDiffTokens}`);
+
+    out.show(true);
 }
 
 async function optimizeSelection() {

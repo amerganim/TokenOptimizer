@@ -13,6 +13,7 @@ export interface Settings {
     trimmerPreset: TrimmerPreset;
     compressorPreset: CompressorPreset;
     logCompressionPreset: LogCompressionPreset;
+    gitMaxDiffTokens: number;
     enableSemanticSearch: boolean;
     enableOllama: boolean;
 }
@@ -29,6 +30,7 @@ export function getSettings(): Settings {
         trimmerPreset:        cfg.get<TrimmerPreset>('trimmer.preset', 'default'),
         compressorPreset:     cfg.get<CompressorPreset>('compressor.preset', 'default'),
         logCompressionPreset: cfg.get<LogCompressionPreset>('logCompression.preset', 'balanced'),
+        gitMaxDiffTokens:     cfg.get<number>('git.maxDiffTokens', 8000),
         enableSemanticSearch: cfg.get<boolean>('features.semanticSearch', false),
         enableOllama:         cfg.get<boolean>('features.ollama', false),
     };

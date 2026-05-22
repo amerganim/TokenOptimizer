@@ -46,6 +46,10 @@
       {
         "command": "token-optimizer.optimizeSelection",
         "title": "Token Optimizer: Optimize Selection (Replace In Place)"
+      },
+      {
+        "command": "token-optimizer.diagnose",
+        "title": "Token Optimizer: Diagnose (print state to output channel)"
       }
     ],
     "menus": {
@@ -112,6 +116,12 @@
           "enum": ["mild", "balanced", "aggressive"],
           "default": "balanced",
           "description": "(Phase 2) Default preset for log/terminal output compression."
+        },
+        "tokenOptimizer.git.maxDiffTokens": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 0,
+          "description": "Max tokens to include when injecting a git diff via @scope:diff / @scope:staged / @scope:last-commit. Larger diffs are truncated hunk-by-hunk with omission markers. Set to 0 to disable truncation."
         },
         "tokenOptimizer.features.semanticSearch": {
           "type": "boolean",

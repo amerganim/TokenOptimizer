@@ -77,6 +77,33 @@ const TAGS = [
         insertText: '@scope:class:'
     },
     {
+        label: '@scope:diff',
+        detail: 'Include unstaged git working-tree changes',
+        documentation: new vscode.MarkdownString(
+            '**@scope:diff** — Runs `git diff` in the workspace and injects the unstaged changes as context. Truncates large diffs to fit `tokenOptimizer.git.maxDiffTokens`.\n\n' +
+            '**Example:** `@scope:diff Review my pending changes`'
+        ),
+        insertText: '@scope:diff '
+    },
+    {
+        label: '@scope:staged',
+        detail: 'Include staged (index) changes',
+        documentation: new vscode.MarkdownString(
+            '**@scope:staged** — Runs `git diff --cached` and injects the staged changes as context. Useful for "review what I\'m about to commit".\n\n' +
+            '**Example:** `@scope:staged Write a commit message for these changes`'
+        ),
+        insertText: '@scope:staged '
+    },
+    {
+        label: '@scope:last-commit',
+        detail: 'Include the diff of the most recent commit (HEAD~1..HEAD)',
+        documentation: new vscode.MarkdownString(
+            '**@scope:last-commit** — Runs `git diff HEAD~1 HEAD` and injects the most recent commit\'s diff. Useful for "explain my last commit".\n\n' +
+            '**Example:** `@scope:last-commit Summarize what I just did`'
+        ),
+        insertText: '@scope:last-commit '
+    },
+    {
         label: '@log',
         detail: 'Compress terminal/log output (open Prompt Panel)',
         documentation: new vscode.MarkdownString(
