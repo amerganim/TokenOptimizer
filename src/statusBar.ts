@@ -3,6 +3,7 @@ import { countTokens, estimateCost } from './tokenCounter';
 import { getSettings, onSettingsChanged } from './settings';
 import { Metrics } from './metrics';
 import { SessionTracker } from './sessionTracker';
+import { CodeIndexer } from './codeIndexer';
 
 let statusBarItem: vscode.StatusBarItem | undefined;
 
@@ -16,12 +17,14 @@ export function activateStatusBar(context: vscode.ExtensionContext) {
     const refresh = () => updateStatusBar();
 
     const unsubSession = SessionTracker.onChange(refresh);
+    const idxProgressDisposable = CodeIndexer.onProgress(refresh);
     context.subscriptions.push(
         vscode.window.onDidChangeTextEditorSelection(refresh),
         vscode.window.onDidChangeActiveTextEditor(refresh),
         onSettingsChanged(refresh),
         Metrics.onChange(refresh),
         new vscode.Disposable(unsubSession),
+        idxProgressDisposable,
     );
 
     refresh();
@@ -80,6 +83,13 @@ function buildTooltip(model: string): vscode.MarkdownString {
     const sessionOutput  = SessionTracker.totalOutputTokens();
     if (sessionOutput > 0) {
         md.appendMarkdown(`- ${sessionOutput.toLocaleString()} tokens sent out (${sessionContext.toLocaleString()} as injected context)\n`);
+    }
+
+    if (CodeIndexer.isBuilding()) {
+        const p = CodeIndexer.getProgress();
+        md.appendMarkdown(`\n**Semantic index** (${p.phase})\n\n`);
+        md.appendMarkdown(`- ${p.filesProcessed} / ${p.filesTotal} files · ${p.chunksTotal} chunks\n`);
+        if (p.currentFile) md.appendMarkdown(`- ${p.currentFile}\n`);
     }
     md.appendMarkdown(`\n`);
     md.appendMarkdown(`**Lifetime**\n\n`);

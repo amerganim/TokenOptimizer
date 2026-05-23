@@ -13,6 +13,8 @@ import {
     RepoMapper, RepoMapLevel,
     DEFAULT_SOURCE_GLOB, DEFAULT_EXCLUDE_GLOB,
 } from './repoMapper';
+import { SemanticSearch } from './semanticSearch';
+import { CodeIndexer } from './codeIndexer';
 import {
     SessionTracker, SessionEntryKind,
     keyForFile, keyForSymbol, keyForClass, keyForImports, keyForTypes,
@@ -262,6 +264,11 @@ export class PromptPanel {
             return this._resolveRepoMapScope(scope.name);
         }
 
+        // Semantic search — feature-flagged
+        if (scope.kind === 'semantic') {
+            return this._resolveSemanticScope(promptText);
+        }
+
         // All other scopes need an active editor
         if (!editor) {
             return info(`[@scope:${scope.kind} needs a file open — click into a code file before optimizing]`);
@@ -451,6 +458,53 @@ export class PromptPanel {
         // keys: a coarse key for the auto query + each individual file's key
         const keywordSig = kwResult.keywords.slice(0, 4).sort().join(',');
         const keys = [keyForAuto(keywordSig), ...files.map(f => keyForFile(f.relPath))];
+        return { block: blocks.join('\n\n'), keys };
+    }
+
+    private async _resolveSemanticScope(promptText: string): Promise<ResolvedScope | null> {
+        const info = (msg: string): ResolvedScope => ({ block: msg, keys: [] });
+        const settings = getSettings();
+        if (!settings.enableSemanticSearch) {
+            return info(
+                '[@scope:semantic disabled — turn on `tokenOptimizer.features.semanticSearch` in settings, ' +
+                'then run "Token Optimizer: Build Semantic Index".]',
+            );
+        }
+        const index = await CodeIndexer.getIndex();
+        if (!index) {
+            return info(
+                '[@scope:semantic: index not built yet — run "Token Optimizer: Build Semantic Index" ' +
+                '(takes a minute on first run; ~25MB model downloaded).]',
+            );
+        }
+        let hits;
+        try {
+            hits = await SemanticSearch.search(promptText, {
+                topN: settings.autoContextMaxFiles,
+                minScore: 0.2,
+            });
+        } catch (err: unknown) {
+            return info(`[@scope:semantic failed: ${err instanceof Error ? err.message : String(err)}]`);
+        }
+        if (hits.length === 0) {
+            return info('[@scope:semantic: no chunks scored above threshold for this query]');
+        }
+        const blocks: string[] = [];
+        blocks.push(
+            `[Semantic search picked ${hits.length} chunk(s) from ${index.meta.chunkCount.toLocaleString()} indexed ` +
+            `(${index.meta.fileCount} files, model: ${index.meta.modelId})]`,
+        );
+        const keys: string[] = [];
+        for (const hit of hits) {
+            const c = hit.chunk;
+            const where = c.symbolName
+                ? `${c.relPath} · ${c.kind} "${c.symbolName}" (lines ${c.startLine + 1}–${c.endLine + 1})`
+                : `${c.relPath} (lines ${c.startLine + 1}–${c.endLine + 1})`;
+            blocks.push(
+                `[Context: ${where} · score ${hit.score.toFixed(3)}]\n\`\`\`\n${c.text}\n\`\`\``,
+            );
+            keys.push(c.symbolName ? keyForSymbol(c.relPath, c.symbolName) : keyForFile(c.relPath));
+        }
         return { block: blocks.join('\n\n'), keys };
     }
 

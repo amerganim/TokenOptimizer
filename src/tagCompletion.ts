@@ -151,6 +151,19 @@ const TAGS = [
         insertText: '@scope:repo-map:signatures '
     },
     {
+        label: '@scope:semantic',
+        detail: 'Semantic search over the local code index (opt-in)',
+        documentation: new vscode.MarkdownString(
+            '**@scope:semantic** — Runs a local embedding-based search over the indexed codebase and injects the top-N most relevant chunks.\n\n' +
+            '**Requirements:**\n' +
+            '1. Enable `tokenOptimizer.features.semanticSearch` in settings\n' +
+            '2. Run **Token Optimizer: Build Semantic Index** (~25MB model downloaded on first use)\n\n' +
+            'Uses cosine similarity over MiniLM-L6 embeddings. Best for queries that describe behavior rather than naming specific symbols.\n\n' +
+            '**Example:** `@scope:semantic where do we collapse repeated log lines?`'
+        ),
+        insertText: '@scope:semantic '
+    },
+    {
         label: '@log',
         detail: 'Compress terminal/log output (open Prompt Panel)',
         documentation: new vscode.MarkdownString(

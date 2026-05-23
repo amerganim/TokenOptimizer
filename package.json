@@ -58,6 +58,18 @@
       {
         "command": "token-optimizer.resetSession",
         "title": "Token Optimizer: Reset Session History"
+      },
+      {
+        "command": "token-optimizer.buildSemanticIndex",
+        "title": "Token Optimizer: Build Semantic Index"
+      },
+      {
+        "command": "token-optimizer.rebuildSemanticIndex",
+        "title": "Token Optimizer: Rebuild Semantic Index (drop existing)"
+      },
+      {
+        "command": "token-optimizer.showSemanticIndexStats",
+        "title": "Token Optimizer: Show Semantic Index Stats"
       }
     ],
     "menus": {
@@ -87,7 +99,12 @@
       "properties": {
         "tokenOptimizer.defaultModel": {
           "type": "string",
-          "enum": ["gpt-4o", "gpt-4o-mini", "claude-sonnet", "claude-haiku"],
+          "enum": [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "claude-sonnet",
+            "claude-haiku"
+          ],
           "default": "claude-sonnet",
           "description": "Default model used for cost estimation and pricing display."
         },
@@ -109,19 +126,31 @@
         },
         "tokenOptimizer.trimmer.preset": {
           "type": "string",
-          "enum": ["light", "default", "aggressive"],
+          "enum": [
+            "light",
+            "default",
+            "aggressive"
+          ],
           "default": "default",
           "description": "Code trimmer preset (comments, console.logs, duplicate imports). Used when no @optimize tag is set."
         },
         "tokenOptimizer.compressor.preset": {
           "type": "string",
-          "enum": ["light", "default", "aggressive"],
+          "enum": [
+            "light",
+            "default",
+            "aggressive"
+          ],
           "default": "default",
           "markdownDescription": "Linguistic compressor preset.\n- `light`: only whitespace + punctuation cleanup\n- `default`: + remove politeness/hedging/meta-commentary, shorten verbose phrases\n- `aggressive`: + strip filler adverbs and abbreviate technical terms (auth, app, config, …)"
         },
         "tokenOptimizer.logCompression.preset": {
           "type": "string",
-          "enum": ["mild", "balanced", "aggressive"],
+          "enum": [
+            "mild",
+            "balanced",
+            "aggressive"
+          ],
           "default": "balanced",
           "description": "(Phase 2) Default preset for log/terminal output compression."
         },
@@ -145,7 +174,12 @@
         },
         "tokenOptimizer.repoMap.defaultLevel": {
           "type": "string",
-          "enum": ["tree", "names", "signatures", "auto"],
+          "enum": [
+            "tree",
+            "names",
+            "signatures",
+            "auto"
+          ],
           "default": "auto",
           "markdownDescription": "Detail level used when `@scope:repo-map` is invoked without an explicit `:<level>`.\n- `tree`: directory tree + file sizes (cheapest)\n- `names`: file paths + top-level symbol names\n- `signatures`: file paths + first line of each top-level symbol\n- `auto`: pick the richest level that fits in the token budget"
         },
@@ -196,6 +230,7 @@
     "typescript-eslint": "^8.56.1"
   },
   "dependencies": {
+    "@xenova/transformers": "^2.17.2",
     "tiktoken": "^1.0.22"
   },
   "jest": {

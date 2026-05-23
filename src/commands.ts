@@ -8,6 +8,7 @@ import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from
 import { PromptCompressor, COMPRESS_DEFAULT, COMPRESS_AGGRESSIVE, COMPRESS_LIGHT } from './promptCompressor';
 import { GitContext } from './gitContext';
 import { SessionTracker, describeEntry } from './sessionTracker';
+import { CodeIndexer } from './codeIndexer';
 
 export function activateCommands(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -25,6 +26,78 @@ export function activateCommands(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('token-optimizer.diagnose', diagnose),
         vscode.commands.registerCommand('token-optimizer.showSessionHistory', showSessionHistory),
         vscode.commands.registerCommand('token-optimizer.resetSession', resetSession),
+        vscode.commands.registerCommand('token-optimizer.buildSemanticIndex', buildSemanticIndex),
+        vscode.commands.registerCommand('token-optimizer.rebuildSemanticIndex', rebuildSemanticIndex),
+        vscode.commands.registerCommand('token-optimizer.showSemanticIndexStats', showSemanticIndexStats),
+    );
+}
+
+async function buildSemanticIndex() {
+    if (!getSettings().enableSemanticSearch) {
+        const enable = await vscode.window.showWarningMessage(
+            'Semantic search is disabled. Enable it now? (Downloads ~25MB model on first index.)',
+            { modal: true },
+            'Enable',
+        );
+        if (enable !== 'Enable') return;
+        await vscode.workspace.getConfiguration('tokenOptimizer')
+            .update('features.semanticSearch', true, vscode.ConfigurationTarget.Global);
+    }
+    await runIndexerWithProgress('Building semantic index', false);
+}
+
+async function rebuildSemanticIndex() {
+    const confirm = await vscode.window.showWarningMessage(
+        'Rebuild semantic index from scratch? This drops the existing index and re-embeds every file.',
+        { modal: true },
+        'Rebuild',
+    );
+    if (confirm !== 'Rebuild') return;
+    await runIndexerWithProgress('Rebuilding semantic index', true);
+}
+
+async function runIndexerWithProgress(title: string, fullRebuild: boolean) {
+    await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title, cancellable: false },
+        async progress => {
+            const sub = CodeIndexer.onProgress(p => {
+                const total = Math.max(1, p.filesTotal);
+                const pct = Math.round((p.filesProcessed / total) * 100);
+                const tail = p.currentFile ? ` · ${p.currentFile}` : '';
+                progress.report({
+                    message: `${p.phase} ${p.filesProcessed}/${p.filesTotal} (${pct}%) · ${p.chunksTotal} chunks${tail}`,
+                });
+            });
+            try {
+                if (fullRebuild) await CodeIndexer.rebuild();
+                else             await CodeIndexer.buildOrUpdate(false);
+                const stats = CodeIndexer.getStats();
+                if (stats) {
+                    vscode.window.showInformationMessage(
+                        `Semantic index ready: ${stats.chunkCount.toLocaleString()} chunks across ${stats.fileCount} files (${stats.modelId})`,
+                    );
+                }
+            } catch (err: unknown) {
+                vscode.window.showErrorMessage(
+                    `Semantic indexing failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
+            } finally {
+                sub.dispose();
+            }
+        },
+    );
+}
+
+async function showSemanticIndexStats() {
+    const idx = await CodeIndexer.getIndex();
+    if (!idx) {
+        vscode.window.showInformationMessage('Semantic index: not built. Run "Token Optimizer: Build Semantic Index".');
+        return;
+    }
+    const built = new Date(idx.meta.builtAt).toLocaleString();
+    vscode.window.showInformationMessage(
+        `Semantic index — ${idx.meta.chunkCount.toLocaleString()} chunks · ${idx.meta.fileCount} files · model ${idx.meta.modelId} · built ${built}`,
+        { modal: true },
     );
 }
 
