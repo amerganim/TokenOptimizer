@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { countTokens, estimateCost } from './tokenCounter';
 import { getSettings, onSettingsChanged } from './settings';
 import { Metrics } from './metrics';
+import { SessionTracker } from './sessionTracker';
 
 let statusBarItem: vscode.StatusBarItem | undefined;
 
@@ -14,11 +15,13 @@ export function activateStatusBar(context: vscode.ExtensionContext) {
 
     const refresh = () => updateStatusBar();
 
+    const unsubSession = SessionTracker.onChange(refresh);
     context.subscriptions.push(
         vscode.window.onDidChangeTextEditorSelection(refresh),
         vscode.window.onDidChangeActiveTextEditor(refresh),
         onSettingsChanged(refresh),
         Metrics.onChange(refresh),
+        new vscode.Disposable(unsubSession),
     );
 
     refresh();
@@ -72,7 +75,13 @@ function buildTooltip(model: string): vscode.MarkdownString {
     md.appendMarkdown(`---\n\n`);
     md.appendMarkdown(`**This session**\n\n`);
     md.appendMarkdown(`- ${session.tokensSaved.toLocaleString()} tokens saved (${sessionCost})\n`);
-    md.appendMarkdown(`- ${session.optimizationCount} optimizations\n\n`);
+    md.appendMarkdown(`- ${session.optimizationCount} optimizations\n`);
+    const sessionContext = SessionTracker.totalContextTokens();
+    const sessionOutput  = SessionTracker.totalOutputTokens();
+    if (sessionOutput > 0) {
+        md.appendMarkdown(`- ${sessionOutput.toLocaleString()} tokens sent out (${sessionContext.toLocaleString()} as injected context)\n`);
+    }
+    md.appendMarkdown(`\n`);
     md.appendMarkdown(`**Lifetime**\n\n`);
     md.appendMarkdown(`- ${lifetime.tokensSaved.toLocaleString()} tokens saved (${lifetimeCost})\n`);
     md.appendMarkdown(`- ${lifetime.optimizationCount} optimizations\n`);

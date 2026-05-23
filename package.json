@@ -50,6 +50,14 @@
       {
         "command": "token-optimizer.diagnose",
         "title": "Token Optimizer: Diagnose (print state to output channel)"
+      },
+      {
+        "command": "token-optimizer.showSessionHistory",
+        "title": "Token Optimizer: Show Session History"
+      },
+      {
+        "command": "token-optimizer.resetSession",
+        "title": "Token Optimizer: Reset Session History"
       }
     ],
     "menus": {

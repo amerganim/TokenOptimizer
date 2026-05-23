@@ -13,6 +13,17 @@ import {
     RepoMapper, RepoMapLevel,
     DEFAULT_SOURCE_GLOB, DEFAULT_EXCLUDE_GLOB,
 } from './repoMapper';
+import {
+    SessionTracker, SessionEntryKind,
+    keyForFile, keyForSymbol, keyForClass, keyForImports, keyForTypes,
+    keyForDiff, keyForRepoMap, keyForAuto,
+} from './sessionTracker';
+
+interface ResolvedScope {
+    block: string;
+    /** Dedup keys. Empty = always include (e.g., error messages). keys[0] is primary. */
+    keys: string[];
+}
 import { Metrics } from './metrics';
 import { getSettings, TrimmerPreset, CompressorPreset, LogCompressionPreset } from './settings';
 
@@ -137,15 +148,44 @@ export class PromptPanel {
 
         // Build context blocks separately and track their token cost.
         // Scope context is ADDITIVE — it should not be counted against compression savings.
+        //
+        // Two dedup mechanisms:
+        //   1. Within-prompt: if scope A's primary key was already included by scope B
+        //      earlier in this prompt, skip A and emit a tiny dedup note.
+        //   2. Cross-prompt: warn if a key was sent recently via SessionTracker.findRecent.
         let contextBlocks = '';
+        const seenKeys = new Set<string>();
+        const allKeysThisPrompt: string[] = [];
         if (scopes.length > 0) {
             const editor = vscode.window.activeTextEditor;
             for (const scope of scopes) {
-                const block = await this._resolveScope(scope, editor, cleanPrompt);
-                if (block) {
-                    contextBlocks += `\n\n${block}`;
-                    rulesApplied.push(`scope:${scope.kind}${scope.name ? `:${scope.name}` : ''}`);
+                const tagLabel = `scope:${scope.kind}${scope.name ? `:${scope.name}` : ''}`;
+                const resolved = await this._resolveScope(scope, editor, cleanPrompt);
+                if (!resolved) continue;
+
+                // Within-prompt dedup — check primary key
+                if (resolved.keys.length > 0 && seenKeys.has(resolved.keys[0])) {
+                    contextBlocks += `\n\n[Context: ${resolved.keys[0]} — already included above (dedup)]`;
+                    rulesApplied.push(`${tagLabel} (deduped)`);
+                    continue;
                 }
+
+                // Cross-prompt warning — only on primary key (avoid noise from auto's many file keys)
+                let warning = '';
+                if (resolved.keys.length > 0) {
+                    const recent = SessionTracker.findRecent(resolved.keys[0], 600); // 10 min window
+                    if (recent) {
+                        const mins = Math.max(1, Math.round(recent.secondsAgo / 60));
+                        warning = `\n[Heads-up: ${resolved.keys[0]} was already shared ~${mins}min ago in this session]`;
+                    }
+                }
+
+                contextBlocks += `\n\n${resolved.block}${warning}`;
+                rulesApplied.push(tagLabel);
+                resolved.keys.forEach(k => {
+                    seenKeys.add(k);
+                    allKeysThisPrompt.push(k);
+                });
             }
         }
 
@@ -169,6 +209,14 @@ export class PromptPanel {
 
         // Only the prose compression counts as "saved tokens" in lifetime metrics.
         Metrics.recordOptimization(proseSaved);
+
+        // Record session entry — drives cross-prompt warnings + Show Session History.
+        SessionTracker.record({
+            kind: 'optimize',
+            keys: allKeysThisPrompt,
+            contextTokens,
+            totalTokens: totalOutputTokens,
+        });
 
         this._panel.webview.postMessage({
             command: 'optimizeResult',
@@ -194,105 +242,127 @@ export class PromptPanel {
         scope: ScopeTag,
         editor: vscode.TextEditor | undefined,
         promptText: string,
-    ): Promise<string | null> {
+    ): Promise<ResolvedScope | null> {
         const fmtBlock = (header: string, body: string): string =>
             `[Context: ${header}]\n\`\`\`\n${body}\n\`\`\``;
+        const info = (msg: string): ResolvedScope => ({ block: msg, keys: [] });
 
         // Git scopes don't need an editor — only a workspace folder
         if (scope.kind === 'diff' || scope.kind === 'staged' || scope.kind === 'last-commit') {
             return this._resolveGitScope(scope.kind);
         }
 
-        // Auto-context — needs neither editor nor workspace folder specifically;
-        // it queries the workspace symbol provider directly
+        // Auto-context
         if (scope.kind === 'auto') {
             return this._resolveAutoScope(promptText);
         }
 
-        // Repo map — independent of editor
+        // Repo map
         if (scope.kind === 'repo-map') {
             return this._resolveRepoMapScope(scope.name);
         }
 
         // All other scopes need an active editor
         if (!editor) {
-            return `[@scope:${scope.kind} needs a file open — click into a code file before optimizing]`;
+            return info(`[@scope:${scope.kind} needs a file open — click into a code file before optimizing]`);
         }
         const doc = editor.document;
+        const relPath = vscode.workspace.asRelativePath(doc.uri);
 
         switch (scope.kind) {
             case 'fn': {
-                // Try the smart VS Code symbol API first; fall back to regex extractor
                 const sym = await SymbolExtractor.getSymbolAtCursor(doc, editor.selection.active);
                 if (sym) {
-                    return fmtBlock(
-                        `${sym.kind} "${sym.shortName}" (lines ${sym.startLine + 1}–${sym.endLine + 1})`,
-                        sym.text,
-                    );
+                    return {
+                        block: fmtBlock(
+                            `${sym.kind} "${sym.shortName}" (lines ${sym.startLine + 1}–${sym.endLine + 1})`,
+                            sym.text,
+                        ),
+                        keys: [keyForSymbol(relPath, sym.shortName)],
+                    };
                 }
                 const fallback = ContextExtractor.extractForScope('fn', editor);
                 if (!fallback) return null;
                 const label = fallback.functionName
                     ? `function "${fallback.functionName}"`
                     : `lines ${fallback.startLine + 1}–${fallback.endLine + 1}`;
-                return fmtBlock(label, fallback.text);
+                const fnKey = fallback.functionName
+                    ? keyForSymbol(relPath, fallback.functionName)
+                    : `fn:${relPath}:${fallback.startLine}-${fallback.endLine}`;
+                return { block: fmtBlock(label, fallback.text), keys: [fnKey] };
             }
             case 'file':
-                return fmtBlock(`file ${doc.fileName.split(/[\\/]/).pop()}`, doc.getText());
+                return {
+                    block: fmtBlock(`file ${relPath}`, doc.getText()),
+                    keys: [keyForFile(relPath)],
+                };
 
             case 'imports': {
                 const imp = SymbolExtractor.extractImports(doc);
-                if (!imp) return '[No imports detected at top of file]';
-                return fmtBlock(
-                    `imports (lines ${imp.startLine + 1}–${imp.endLine + 1})`,
-                    imp.text,
-                );
+                if (!imp) return info('[No imports detected at top of file]');
+                return {
+                    block: fmtBlock(
+                        `imports of ${relPath} (lines ${imp.startLine + 1}–${imp.endLine + 1})`,
+                        imp.text,
+                    ),
+                    keys: [keyForImports(relPath)],
+                };
             }
             case 'types': {
                 const types = await SymbolExtractor.extractTypes(doc);
-                if (types.length === 0) return '[No types/interfaces/enums found in file]';
+                if (types.length === 0) return info('[No types/interfaces/enums found in file]');
                 const merged = types
                     .map(t => `// ${t.kind} ${t.shortName} (line ${t.startLine + 1})\n${t.text}`)
                     .join('\n\n');
-                return fmtBlock(`${types.length} type(s)`, merged);
+                return {
+                    block: fmtBlock(`${types.length} type(s) in ${relPath}`, merged),
+                    keys: [keyForTypes(relPath)],
+                };
             }
             case 'symbol': {
-                if (!scope.name) return '[Missing symbol name: use @scope:symbol:<name>]';
+                if (!scope.name) return info('[Missing symbol name: use @scope:symbol:<name>]');
                 const sym = await SymbolExtractor.findSymbol(doc, scope.name);
-                if (!sym) return `[Symbol "${scope.name}" not found in file]`;
-                return fmtBlock(
-                    `${sym.kind} "${sym.shortName}" (lines ${sym.startLine + 1}–${sym.endLine + 1})`,
-                    sym.text,
-                );
+                if (!sym) return info(`[Symbol "${scope.name}" not found in file]`);
+                return {
+                    block: fmtBlock(
+                        `${sym.kind} "${sym.shortName}" (lines ${sym.startLine + 1}–${sym.endLine + 1})`,
+                        sym.text,
+                    ),
+                    keys: [keyForSymbol(relPath, sym.shortName)],
+                };
             }
             case 'class': {
-                if (!scope.name) return '[Missing class name: use @scope:class:<name>]';
+                if (!scope.name) return info('[Missing class name: use @scope:class:<name>]');
                 const cls = await SymbolExtractor.extractClass(doc, scope.name);
-                if (!cls) return `[Class "${scope.name}" not found in file]`;
-                return fmtBlock(
-                    `class "${cls.shortName}" (lines ${cls.startLine + 1}–${cls.endLine + 1})`,
-                    cls.text,
-                );
+                if (!cls) return info(`[Class "${scope.name}" not found in file]`);
+                return {
+                    block: fmtBlock(
+                        `class "${cls.shortName}" (lines ${cls.startLine + 1}–${cls.endLine + 1})`,
+                        cls.text,
+                    ),
+                    keys: [keyForClass(relPath, cls.shortName)],
+                };
             }
         }
     }
 
     private async _resolveGitScope(
         kind: 'diff' | 'staged' | 'last-commit',
-    ): Promise<string | null> {
+    ): Promise<ResolvedScope | null> {
+        const info = (msg: string): ResolvedScope => ({ block: msg, keys: [] });
         const cwd = GitContext.resolveCwd();
         if (!cwd) {
             const folders = vscode.workspace.workspaceFolders;
             const editor = vscode.window.activeTextEditor;
-            return [
+            return info([
                 `[git ${kind} aborted — no cwd resolved]`,
                 `  workspaceFolders: ${folders?.length ? folders.map(f => f.uri.fsPath).join(' | ') : '(none)'}`,
                 `  activeEditor: ${editor ? editor.document.uri.toString() : '(none)'}`,
                 `  Fix: open a folder via File → Open Folder…`,
-            ].join('\n');
+            ].join('\n'));
         }
         const isRepo = await GitContext.isGitRepo(cwd);
-        if (!isRepo) return `[git ${kind} aborted — ${cwd} is not a git repository (no .git dir found)]`;
+        if (!isRepo) return info(`[git ${kind} aborted — ${cwd} is not a git repository (no .git dir found)]`);
 
         const budget = getSettings().gitMaxDiffTokens;
         let result: GitDiffResult | null = null;
@@ -301,19 +371,23 @@ export class PromptPanel {
             else if (kind === 'staged') result = await GitContext.getStagedDiff(cwd, budget);
             else                        result = await GitContext.getLastCommitDiff(cwd, budget);
         } catch (err: unknown) {
-            return `[git ${kind} failed in ${cwd}: ${err instanceof Error ? err.message : String(err)}]`;
+            return info(`[git ${kind} failed in ${cwd}: ${err instanceof Error ? err.message : String(err)}]`);
         }
         if (!result) {
-            return `[No ${kind === 'diff' ? 'unstaged' : kind === 'staged' ? 'staged' : 'recent'} changes in ${cwd}]`;
+            return info(`[No ${kind === 'diff' ? 'unstaged' : kind === 'staged' ? 'staged' : 'recent'} changes in ${cwd}]`);
         }
         const summary = GitContext.summaryLine(result);
         const truncationNote = result.tokens < result.rawTokens
             ? `  (truncated from ${result.rawTokens} → ${result.tokens} tokens, budget ${budget})`
             : '';
-        return `[Context: ${summary}${truncationNote}]\n\`\`\`diff\n${result.truncatedDiff}\n\`\`\``;
+        const diffKeyBase = kind === 'diff' ? 'working' : kind === 'staged' ? 'staged' : 'last-commit';
+        return {
+            block: `[Context: ${summary}${truncationNote}]\n\`\`\`diff\n${result.truncatedDiff}\n\`\`\``,
+            keys: [keyForDiff(diffKeyBase as 'working' | 'staged' | 'last-commit')],
+        };
     }
 
-    private async _resolveRepoMapScope(levelArg: string | undefined): Promise<string | null> {
+    private async _resolveRepoMapScope(levelArg: string | undefined): Promise<ResolvedScope | null> {
         const settings = getSettings();
         const requested: RepoMapLevel =
             (levelArg === 'tree' || levelArg === 'names' ||
@@ -335,7 +409,7 @@ export class PromptPanel {
         });
 
         if (result.fileCount === 0) {
-            return `[@scope:repo-map: no source files matched (glob: ${DEFAULT_SOURCE_GLOB})]`;
+            return { block: `[@scope:repo-map: no source files matched (glob: ${DEFAULT_SOURCE_GLOB})]`, keys: [] };
         }
 
         const downgradeNote = result.actualLevel !== requested
@@ -344,13 +418,17 @@ export class PromptPanel {
         const truncNote = result.truncated ? '  (truncated)' : '';
         const header = `repo-map @ ${result.actualLevel} — ${result.fileCount} files, ${result.tokens} tokens${downgradeNote}${truncNote}`;
 
-        return `[Context: ${header}]\n\`\`\`\n${result.text}\n\`\`\``;
+        return {
+            block: `[Context: ${header}]\n\`\`\`\n${result.text}\n\`\`\``,
+            keys: [keyForRepoMap(result.actualLevel)],
+        };
     }
 
-    private async _resolveAutoScope(promptText: string): Promise<string | null> {
+    private async _resolveAutoScope(promptText: string): Promise<ResolvedScope | null> {
+        const info = (msg: string): ResolvedScope => ({ block: msg, keys: [] });
         const kwResult = extractKeywords(promptText);
         if (kwResult.keywords.length === 0) {
-            return '[@scope:auto: no significant keywords found in prompt]';
+            return info('[@scope:auto: no significant keywords found in prompt]');
         }
         const settings = getSettings();
         const files = await ContextSelector.findRelevantFiles(kwResult.keywords, {
@@ -359,7 +437,7 @@ export class PromptPanel {
             totalBudgetTokens: settings.tokenBudget,
         });
         if (files.length === 0) {
-            return `[@scope:auto: no relevant files for keywords: ${kwResult.keywords.slice(0, 6).join(', ')}]`;
+            return info(`[@scope:auto: no relevant files for keywords: ${kwResult.keywords.slice(0, 6).join(', ')}]`);
         }
         const blocks: string[] = [];
         blocks.push(`[Auto-context picked ${files.length} file(s) from keywords: ${kwResult.keywords.slice(0, 6).join(', ')}]`);
@@ -370,7 +448,10 @@ export class PromptPanel {
                 `[Context: ${f.relPath} (${f.tokens} tokens, score ${f.score.toFixed(1)}, matches: ${matchSummary})]\n\`\`\`\n${body}\n\`\`\``,
             );
         }
-        return blocks.join('\n\n');
+        // keys: a coarse key for the auto query + each individual file's key
+        const keywordSig = kwResult.keywords.slice(0, 4).sort().join(',');
+        const keys = [keyForAuto(keywordSig), ...files.map(f => keyForFile(f.relPath))];
+        return { block: blocks.join('\n\n'), keys };
     }
 
     private async _processSuggestContext(promptText: string): Promise<void> {
@@ -462,6 +543,12 @@ export class PromptPanel {
         const result = LogCompressor.compress(logText, opts);
 
         Metrics.recordOptimization(result.tokensSaved);
+        SessionTracker.record({
+            kind: 'log',
+            keys: [],          // logs are content-based; no stable dedup key
+            contextTokens: 0,  // logs are prose, not "context"
+            totalTokens: result.compressedTokens,
+        });
 
         this._panel.webview.postMessage({
             command: 'optimizeResult',

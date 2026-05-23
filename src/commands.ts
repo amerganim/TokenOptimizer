@@ -7,6 +7,7 @@ import { LogCompressor, LOG_MILD, LOG_BALANCED, LOG_AGGRESSIVE, LogCompressOptio
 import { TokenTrimmer, DEFAULT_OPTIONS, AGGRESSIVE_OPTIONS, LIGHT_OPTIONS } from './tokenTrimmer';
 import { PromptCompressor, COMPRESS_DEFAULT, COMPRESS_AGGRESSIVE, COMPRESS_LIGHT } from './promptCompressor';
 import { GitContext } from './gitContext';
+import { SessionTracker, describeEntry } from './sessionTracker';
 
 export function activateCommands(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -22,7 +23,47 @@ export function activateCommands(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('token-optimizer.optimizeSelection',
             optimizeSelection),
         vscode.commands.registerCommand('token-optimizer.diagnose', diagnose),
+        vscode.commands.registerCommand('token-optimizer.showSessionHistory', showSessionHistory),
+        vscode.commands.registerCommand('token-optimizer.resetSession', resetSession),
     );
+}
+
+async function showSessionHistory() {
+    const entries = SessionTracker.getEntries();
+    if (entries.length === 0) {
+        vscode.window.showInformationMessage(
+            'Token Optimizer: session history is empty. Run an Optimize or Compress Log first.',
+        );
+        return;
+    }
+    const totalCtx   = SessionTracker.totalContextTokens();
+    const totalOut   = SessionTracker.totalOutputTokens();
+    const startedAt  = new Date(SessionTracker.getStartedAt());
+    const startedStr = startedAt.toLocaleTimeString();
+    const items: vscode.QuickPickItem[] = [...entries].reverse().map(e => ({
+        label: describeEntry(e),
+        description: e.keys.length > 1 ? e.keys.slice(1).join(' · ') : undefined,
+    }));
+    items.unshift({
+        label: `── Session started ${startedStr} · ${entries.length} entries · ${totalOut.toLocaleString()} total tokens out (${totalCtx.toLocaleString()} as context)`,
+        kind: vscode.QuickPickItemKind.Separator,
+    });
+    await vscode.window.showQuickPick(items, {
+        placeHolder: 'Token Optimizer — session history (newest first)',
+        matchOnDescription: true,
+    });
+}
+
+async function resetSession() {
+    const confirm = await vscode.window.showWarningMessage(
+        'Reset current session history? Lifetime totals are preserved.',
+        { modal: true },
+        'Reset',
+    );
+    if (confirm === 'Reset') {
+        SessionTracker.reset();
+        vscode.window.showInformationMessage('Token Optimizer: session history reset.');
+    }
 }
 
 async function diagnose() {
