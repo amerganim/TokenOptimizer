@@ -14,6 +14,8 @@ export interface Settings {
     compressorPreset: CompressorPreset;
     logCompressionPreset: LogCompressionPreset;
     gitMaxDiffTokens: number;
+    autoContextMaxFiles: number;
+    autoContextMaxTokensPerFile: number;
     enableSemanticSearch: boolean;
     enableOllama: boolean;
 }
@@ -31,6 +33,8 @@ export function getSettings(): Settings {
         compressorPreset:     cfg.get<CompressorPreset>('compressor.preset', 'default'),
         logCompressionPreset: cfg.get<LogCompressionPreset>('logCompression.preset', 'balanced'),
         gitMaxDiffTokens:     cfg.get<number>('git.maxDiffTokens', 8000),
+        autoContextMaxFiles:  cfg.get<number>('autoContext.maxFiles', 5),
+        autoContextMaxTokensPerFile: cfg.get<number>('autoContext.maxTokensPerFile', 4000),
         enableSemanticSearch: cfg.get<boolean>('features.semanticSearch', false),
         enableOllama:         cfg.get<boolean>('features.ollama', false),
     };

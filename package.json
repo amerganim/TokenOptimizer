@@ -123,6 +123,18 @@
           "minimum": 0,
           "description": "Max tokens to include when injecting a git diff via @scope:diff / @scope:staged / @scope:last-commit. Larger diffs are truncated hunk-by-hunk with omission markers. Set to 0 to disable truncation."
         },
+        "tokenOptimizer.autoContext.maxFiles": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "Maximum number of files @scope:auto and the Suggest Context button will include."
+        },
+        "tokenOptimizer.autoContext.maxTokensPerFile": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 100,
+          "description": "Skip any candidate file larger than this when auto-selecting context."
+        },
         "tokenOptimizer.features.semanticSearch": {
           "type": "boolean",
           "default": false,

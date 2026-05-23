@@ -110,12 +110,13 @@ export function matchSymbolName<T extends NamedSymbol>(symbols: T[], query: stri
  */
 export interface ScopeTag {
     kind: 'fn' | 'file' | 'imports' | 'types' | 'symbol' | 'class'
-        | 'diff' | 'staged' | 'last-commit';
+        | 'diff' | 'staged' | 'last-commit'
+        | 'auto';
     name?: string;
 }
 
 const SCOPE_TAG_PATTERN =
-    /@scope:(fn|file|imports|types|symbol|class|diff|staged|last-commit)(?::([\w.$<>-]+))?/g;
+    /@scope:(fn|file|imports|types|symbol|class|diff|staged|last-commit|auto)(?::([\w.$<>-]+))?/g;
 
 export function parseScopeTags(prompt: string): { scopes: ScopeTag[]; stripped: string } {
     const scopes: ScopeTag[] = [];

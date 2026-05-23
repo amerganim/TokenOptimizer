@@ -104,6 +104,16 @@ const TAGS = [
         insertText: '@scope:last-commit '
     },
     {
+        label: '@scope:auto',
+        detail: 'Auto-pick relevant files from the workspace by prompt keywords',
+        documentation: new vscode.MarkdownString(
+            '**@scope:auto** — Extracts keywords from the rest of your prompt, searches the workspace for matching symbols + filenames, and injects the top files as context (respecting `tokenOptimizer.autoContext.maxFiles` and `…maxTokensPerFile`).\n\n' +
+            'CamelCase / snake_case / PascalCase identifiers in your prompt are weighted highest.\n\n' +
+            '**Example:** `@scope:auto Why is LoginHandler.authenticate returning 401?`'
+        ),
+        insertText: '@scope:auto '
+    },
+    {
         label: '@log',
         detail: 'Compress terminal/log output (open Prompt Panel)',
         documentation: new vscode.MarkdownString(

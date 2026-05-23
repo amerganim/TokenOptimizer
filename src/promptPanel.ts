@@ -7,6 +7,8 @@ import { LogCompressor, LOG_MILD, LOG_BALANCED, LOG_AGGRESSIVE } from './logComp
 import { SymbolExtractor, ExtractedSymbol } from './symbolExtractor';
 import { parseScopeTags, ScopeTag } from './symbolHelpers';
 import { GitContext, GitDiffResult } from './gitContext';
+import { ContextSelector, RelevantFile } from './contextSelector';
+import { extractKeywords } from './keywordExtractor';
 import { Metrics } from './metrics';
 import { getSettings, TrimmerPreset, CompressorPreset, LogCompressionPreset } from './settings';
 
@@ -61,6 +63,9 @@ export class PromptPanel {
                         break;
                     case 'pickSymbols':
                         this._handlePickSymbols();
+                        break;
+                    case 'suggestContextWithPrompt':
+                        this._processSuggestContext(message.text || '');
                         break;
                 }
             },
@@ -132,7 +137,7 @@ export class PromptPanel {
         if (scopes.length > 0) {
             const editor = vscode.window.activeTextEditor;
             for (const scope of scopes) {
-                const block = await this._resolveScope(scope, editor);
+                const block = await this._resolveScope(scope, editor, cleanPrompt);
                 if (block) {
                     contextBlocks += `\n\n${block}`;
                     rulesApplied.push(`scope:${scope.kind}${scope.name ? `:${scope.name}` : ''}`);
@@ -184,6 +189,7 @@ export class PromptPanel {
     private async _resolveScope(
         scope: ScopeTag,
         editor: vscode.TextEditor | undefined,
+        promptText: string,
     ): Promise<string | null> {
         const fmtBlock = (header: string, body: string): string =>
             `[Context: ${header}]\n\`\`\`\n${body}\n\`\`\``;
@@ -191,6 +197,12 @@ export class PromptPanel {
         // Git scopes don't need an editor — only a workspace folder
         if (scope.kind === 'diff' || scope.kind === 'staged' || scope.kind === 'last-commit') {
             return this._resolveGitScope(scope.kind);
+        }
+
+        // Auto-context — needs neither editor nor workspace folder specifically;
+        // it queries the workspace symbol provider directly
+        if (scope.kind === 'auto') {
+            return this._resolveAutoScope(promptText);
         }
 
         // All other scopes need an active editor
@@ -290,6 +302,78 @@ export class PromptPanel {
             ? `  (truncated from ${result.rawTokens} → ${result.tokens} tokens, budget ${budget})`
             : '';
         return `[Context: ${summary}${truncationNote}]\n\`\`\`diff\n${result.truncatedDiff}\n\`\`\``;
+    }
+
+    private async _resolveAutoScope(promptText: string): Promise<string | null> {
+        const kwResult = extractKeywords(promptText);
+        if (kwResult.keywords.length === 0) {
+            return '[@scope:auto: no significant keywords found in prompt]';
+        }
+        const settings = getSettings();
+        const files = await ContextSelector.findRelevantFiles(kwResult.keywords, {
+            maxFiles: settings.autoContextMaxFiles,
+            maxTokensPerFile: settings.autoContextMaxTokensPerFile,
+            totalBudgetTokens: settings.tokenBudget,
+        });
+        if (files.length === 0) {
+            return `[@scope:auto: no relevant files for keywords: ${kwResult.keywords.slice(0, 6).join(', ')}]`;
+        }
+        const blocks: string[] = [];
+        blocks.push(`[Auto-context picked ${files.length} file(s) from keywords: ${kwResult.keywords.slice(0, 6).join(', ')}]`);
+        for (const f of files) {
+            const body = await ContextSelector.readFileBody(f.uri);
+            const matchSummary = f.matches.map(m => `${m.keyword}(${m.via})`).join(' ');
+            blocks.push(
+                `[Context: ${f.relPath} (${f.tokens} tokens, score ${f.score.toFixed(1)}, matches: ${matchSummary})]\n\`\`\`\n${body}\n\`\`\``,
+            );
+        }
+        return blocks.join('\n\n');
+    }
+
+    private async _processSuggestContext(promptText: string): Promise<void> {
+        const kwResult = extractKeywords(promptText);
+        if (kwResult.keywords.length === 0) {
+            vscode.window.showWarningMessage(
+                'Token Optimizer: no significant keywords in prompt — type a real query first.',
+            );
+            return;
+        }
+        const settings = getSettings();
+        const files = await ContextSelector.findRelevantFiles(kwResult.keywords, {
+            maxFiles: Math.max(settings.autoContextMaxFiles * 2, 10),
+            maxTokensPerFile: settings.autoContextMaxTokensPerFile,
+            totalBudgetTokens: settings.tokenBudget * 4,
+        });
+        if (files.length === 0) {
+            vscode.window.showInformationMessage(
+                `Token Optimizer: no files matched keywords: ${kwResult.keywords.slice(0, 6).join(', ')}`,
+            );
+            return;
+        }
+        const items: (vscode.QuickPickItem & { _file: RelevantFile })[] = files.map(f => ({
+            label: `$(file) ${f.relPath}`,
+            description: `score ${f.score.toFixed(1)} · ${f.tokens.toLocaleString()} tokens`,
+            detail: f.matches.map(m => `${m.keyword}(${m.via})`).join(' · '),
+            _file: f,
+            picked: false,
+        }));
+        const picked = await vscode.window.showQuickPick(items, {
+            canPickMany: true,
+            placeHolder: `Pick files to include · keywords: ${kwResult.keywords.slice(0, 6).join(', ')}`,
+            matchOnDescription: true,
+            matchOnDetail: true,
+        });
+        if (!picked || picked.length === 0) return;
+
+        const blocks: string[] = [];
+        for (const item of picked) {
+            const body = await ContextSelector.readFileBody(item._file.uri);
+            blocks.push(`[Context: ${item._file.relPath} (${item._file.tokens} tokens)]\n\`\`\`\n${body}\n\`\`\``);
+        }
+        this._panel.webview.postMessage({
+            command: 'insertText',
+            text: '\n\n' + blocks.join('\n\n'),
+        });
     }
 
     private async _handlePickSymbols(): Promise<void> {
@@ -604,6 +688,7 @@ export class PromptPanel {
 
             <div class="btn-row">
                 <button class="btn-primary" id="actionBtn" onclick="runAction()">⚡ Optimize</button>
+                <button class="btn-secondary" onclick="suggestContext()">🔎 Suggest Context</button>
                 <button class="btn-secondary" onclick="pickSymbols()">📐 Pick Symbols…</button>
                 <button class="btn-secondary" onclick="clearAll()">Clear</button>
             </div>
@@ -706,6 +791,14 @@ export class PromptPanel {
 
                 function pickSymbols() {
                     vscode.postMessage({ command: 'pickSymbols' });
+                }
+
+                function suggestContext() {
+                    const text = input.value.trim();
+                    if (!text) {
+                        return;
+                    }
+                    vscode.postMessage({ command: 'suggestContextWithPrompt', text });
                 }
 
                 function showTab(name) {
