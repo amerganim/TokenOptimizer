@@ -114,6 +114,43 @@ const TAGS = [
         insertText: '@scope:auto '
     },
     {
+        label: '@scope:repo-map',
+        detail: 'Hierarchical map of the whole repo (auto level)',
+        documentation: new vscode.MarkdownString(
+            '**@scope:repo-map** — Injects a hierarchical map of the workspace. Uses the level set in `tokenOptimizer.repoMap.defaultLevel` (default: `auto`).\n\n' +
+            '`auto` picks the richest level that fits in `tokenOptimizer.tokenBudget`:\n' +
+            '1. `signatures` — file paths + first line of each symbol\n' +
+            '2. `names` — file paths + symbol names only\n' +
+            '3. `tree` — directory tree + file sizes\n\n' +
+            '**Example:** `@scope:repo-map Give me a tour of this codebase`'
+        ),
+        insertText: '@scope:repo-map '
+    },
+    {
+        label: '@scope:repo-map:tree',
+        detail: 'Directory tree + file sizes only (cheapest)',
+        documentation: new vscode.MarkdownString(
+            '**@scope:repo-map:tree** — Just the directory layout with file sizes. Ideal for "give me a quick overview" prompts with a tight token budget.'
+        ),
+        insertText: '@scope:repo-map:tree '
+    },
+    {
+        label: '@scope:repo-map:names',
+        detail: 'File paths + top-level symbol names',
+        documentation: new vscode.MarkdownString(
+            '**@scope:repo-map:names** — Each file + its top-level classes / functions / interfaces (no bodies, no signatures). Mid-cost.'
+        ),
+        insertText: '@scope:repo-map:names '
+    },
+    {
+        label: '@scope:repo-map:signatures',
+        detail: 'File paths + first line of each top-level symbol',
+        documentation: new vscode.MarkdownString(
+            '**@scope:repo-map:signatures** — Each file + first line of every top-level symbol (usually the signature for functions and class declarations). Richest non-full level.'
+        ),
+        insertText: '@scope:repo-map:signatures '
+    },
+    {
         label: '@log',
         detail: 'Compress terminal/log output (open Prompt Panel)',
         documentation: new vscode.MarkdownString(

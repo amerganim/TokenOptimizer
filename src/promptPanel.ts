@@ -9,6 +9,10 @@ import { parseScopeTags, ScopeTag } from './symbolHelpers';
 import { GitContext, GitDiffResult } from './gitContext';
 import { ContextSelector, RelevantFile } from './contextSelector';
 import { extractKeywords } from './keywordExtractor';
+import {
+    RepoMapper, RepoMapLevel,
+    DEFAULT_SOURCE_GLOB, DEFAULT_EXCLUDE_GLOB,
+} from './repoMapper';
 import { Metrics } from './metrics';
 import { getSettings, TrimmerPreset, CompressorPreset, LogCompressionPreset } from './settings';
 
@@ -205,6 +209,11 @@ export class PromptPanel {
             return this._resolveAutoScope(promptText);
         }
 
+        // Repo map — independent of editor
+        if (scope.kind === 'repo-map') {
+            return this._resolveRepoMapScope(scope.name);
+        }
+
         // All other scopes need an active editor
         if (!editor) {
             return `[@scope:${scope.kind} needs a file open — click into a code file before optimizing]`;
@@ -302,6 +311,40 @@ export class PromptPanel {
             ? `  (truncated from ${result.rawTokens} → ${result.tokens} tokens, budget ${budget})`
             : '';
         return `[Context: ${summary}${truncationNote}]\n\`\`\`diff\n${result.truncatedDiff}\n\`\`\``;
+    }
+
+    private async _resolveRepoMapScope(levelArg: string | undefined): Promise<string | null> {
+        const settings = getSettings();
+        const requested: RepoMapLevel =
+            (levelArg === 'tree' || levelArg === 'names' ||
+             levelArg === 'signatures' || levelArg === 'auto')
+                ? levelArg
+                : settings.repoMapDefaultLevel;
+
+        const extraExclude = settings.repoMapExcludeGlob?.trim();
+        const excludeGlob = extraExclude
+            ? `{${DEFAULT_EXCLUDE_GLOB.replace(/^\{|\}$/g, '')},${extraExclude}}`
+            : DEFAULT_EXCLUDE_GLOB;
+
+        const result = await RepoMapper.build({
+            level: requested,
+            budgetTokens: settings.tokenBudget,
+            maxFiles: settings.repoMapMaxFiles,
+            sourceGlob: DEFAULT_SOURCE_GLOB,
+            excludeGlob,
+        });
+
+        if (result.fileCount === 0) {
+            return `[@scope:repo-map: no source files matched (glob: ${DEFAULT_SOURCE_GLOB})]`;
+        }
+
+        const downgradeNote = result.actualLevel !== requested
+            ? `  (auto-downgraded from "${requested}" → "${result.actualLevel}" to fit ${settings.tokenBudget} token budget)`
+            : '';
+        const truncNote = result.truncated ? '  (truncated)' : '';
+        const header = `repo-map @ ${result.actualLevel} — ${result.fileCount} files, ${result.tokens} tokens${downgradeNote}${truncNote}`;
+
+        return `[Context: ${header}]\n\`\`\`\n${result.text}\n\`\`\``;
     }
 
     private async _resolveAutoScope(promptText: string): Promise<string | null> {

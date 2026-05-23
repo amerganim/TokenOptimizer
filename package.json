@@ -135,6 +135,23 @@
           "minimum": 100,
           "description": "Skip any candidate file larger than this when auto-selecting context."
         },
+        "tokenOptimizer.repoMap.defaultLevel": {
+          "type": "string",
+          "enum": ["tree", "names", "signatures", "auto"],
+          "default": "auto",
+          "markdownDescription": "Detail level used when `@scope:repo-map` is invoked without an explicit `:<level>`.\n- `tree`: directory tree + file sizes (cheapest)\n- `names`: file paths + top-level symbol names\n- `signatures`: file paths + first line of each top-level symbol\n- `auto`: pick the richest level that fits in the token budget"
+        },
+        "tokenOptimizer.repoMap.maxFiles": {
+          "type": "number",
+          "default": 500,
+          "minimum": 1,
+          "description": "Maximum number of source files included in the repo map (hard cap on discovery)."
+        },
+        "tokenOptimizer.repoMap.excludeGlob": {
+          "type": "string",
+          "default": "",
+          "description": "Additional glob to exclude on top of the built-in node_modules/out/dist/.git ignore list. Leave empty to use only the defaults."
+        },
         "tokenOptimizer.features.semanticSearch": {
           "type": "boolean",
           "default": false,

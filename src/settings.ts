@@ -4,6 +4,7 @@ export type ModelId = 'gpt-4o' | 'gpt-4o-mini' | 'claude-sonnet' | 'claude-haiku
 export type TrimmerPreset = 'light' | 'default' | 'aggressive';
 export type CompressorPreset = 'light' | 'default' | 'aggressive';
 export type LogCompressionPreset = 'mild' | 'balanced' | 'aggressive';
+export type RepoMapLevel = 'tree' | 'names' | 'signatures' | 'auto';
 
 export interface Settings {
     defaultModel: ModelId;
@@ -16,6 +17,9 @@ export interface Settings {
     gitMaxDiffTokens: number;
     autoContextMaxFiles: number;
     autoContextMaxTokensPerFile: number;
+    repoMapDefaultLevel: RepoMapLevel;
+    repoMapMaxFiles: number;
+    repoMapExcludeGlob: string;
     enableSemanticSearch: boolean;
     enableOllama: boolean;
 }
@@ -35,6 +39,9 @@ export function getSettings(): Settings {
         gitMaxDiffTokens:     cfg.get<number>('git.maxDiffTokens', 8000),
         autoContextMaxFiles:  cfg.get<number>('autoContext.maxFiles', 5),
         autoContextMaxTokensPerFile: cfg.get<number>('autoContext.maxTokensPerFile', 4000),
+        repoMapDefaultLevel:  cfg.get<RepoMapLevel>('repoMap.defaultLevel', 'auto'),
+        repoMapMaxFiles:      cfg.get<number>('repoMap.maxFiles', 500),
+        repoMapExcludeGlob:   cfg.get<string>('repoMap.excludeGlob', ''),
         enableSemanticSearch: cfg.get<boolean>('features.semanticSearch', false),
         enableOllama:         cfg.get<boolean>('features.ollama', false),
     };
