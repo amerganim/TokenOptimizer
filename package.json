@@ -1,13 +1,46 @@
 {
   "name": "token-optimizer",
-  "displayName": "token-optimizer",
-  "description": "Optimize token for AI prompts",
-  "version": "0.0.1",
+  "displayName": "Token Optimizer",
+  "description": "Reduce tokens sent to AI assistants. Compresses prose, trims code, summarizes logs, slices context by symbol/diff/repo-map, and supports local semantic search — all on-device.",
+  "version": "0.1.0",
+  "publisher": "amerganim",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amerganim/token-optimizer"
+  },
+  "homepage": "https://github.com/amerganim/token-optimizer#readme",
+  "bugs": {
+    "url": "https://github.com/amerganim/token-optimizer/issues"
+  },
+  "galleryBanner": {
+    "color": "#1a472a",
+    "theme": "dark"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "chatgpt",
+    "tokens",
+    "prompt",
+    "optimizer",
+    "compression",
+    "context",
+    "rag",
+    "embeddings",
+    "ollama",
+    "copilot",
+    "cost",
+    "tiktoken"
+  ],
   "engines": {
     "vscode": "^1.120.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "AI",
+    "Snippets",
+    "Programming Languages"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -15,10 +48,6 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "token-optimizer.helloWorld",
-        "title": "Hello World"
-      },
       {
         "command": "token-optimizer.showCost",
         "title": "Token Optimizer: Show Cost Estimate"
@@ -92,6 +121,47 @@
         "key": "ctrl+shift+o",
         "mac": "cmd+shift+o",
         "when": "editorTextFocus"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "tokenOptimizer.getStarted",
+        "title": "Get Started with Token Optimizer",
+        "description": "Compress prompts, slice context, and save tokens — in five short steps.",
+        "steps": [
+          {
+            "id": "welcome",
+            "title": "What Token Optimizer does",
+            "description": "An overview of the layered token-saving pipeline.",
+            "media": { "markdown": "media/walkthrough/01-welcome.md" }
+          },
+          {
+            "id": "panel",
+            "title": "Open the Prompt Panel",
+            "description": "Press Ctrl+Shift+O — your main workspace for optimizing prompts and logs.",
+            "media": { "markdown": "media/walkthrough/02-panel.md" },
+            "completionEvents": ["onCommand:token-optimizer.openPromptPanel"]
+          },
+          {
+            "id": "tags",
+            "title": "Try the @scope tags",
+            "description": "Inject context surgically: just the function, just the diff, just the N relevant files.",
+            "media": { "markdown": "media/walkthrough/03-tags.md" }
+          },
+          {
+            "id": "semantic",
+            "title": "Optional: enable semantic search",
+            "description": "Local embeddings for meaning-based code search. Opt-in, on-device.",
+            "media": { "markdown": "media/walkthrough/04-semantic.md" },
+            "completionEvents": ["onSettingChanged:tokenOptimizer.features.semanticSearch"]
+          },
+          {
+            "id": "settings",
+            "title": "Tune to taste",
+            "description": "15 settings to make compression match your style.",
+            "media": { "markdown": "media/walkthrough/05-settings.md" }
+          }
+        ]
       }
     ],
     "configuration": {

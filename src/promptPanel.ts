@@ -36,7 +36,7 @@ export class PromptPanel {
     private _disposables: vscode.Disposable[] = [];
 
     // Called from extension.ts to open the panel
-    public static createOrShow(context: vscode.ExtensionContext) {
+    public static createOrShow(_context: vscode.ExtensionContext) {
         // If panel already open, just bring it to focus
         if (PromptPanel.currentPanel) {
             PromptPanel.currentPanel._panel.reveal(vscode.ViewColumn.Two);
@@ -52,10 +52,10 @@ export class PromptPanel {
                 retainContextWhenHidden: true
             }
         );
-        PromptPanel.currentPanel = new PromptPanel(panel, context);
+        PromptPanel.currentPanel = new PromptPanel(panel);
     }
 
-    private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
+    private constructor(panel: vscode.WebviewPanel) {
         this._panel = panel;
 
         // Set the HTML content
@@ -615,11 +615,6 @@ export class PromptPanel {
             rulesApplied: result.rulesApplied.map(r => `log:${r}`),
             logStats: result.stats,
         });
-    }
-
-    private _basicTrim(text: string): string {
-        const result = TokenTrimmer.trim(text, DEFAULT_OPTIONS);
-        return result.trimmed;
     }
 
     public loadLogIntoPanel(logText: string) {

@@ -9,3 +9,8 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+**/jest.config.*
+**/node_modules/.bin/**
+**/test/**
+icon.svg
+memory/**

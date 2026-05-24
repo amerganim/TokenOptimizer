@@ -366,10 +366,21 @@ Edits to `src/*.ts` recompile automatically. **Reload the dev host** (`Ctrl+R` i
 
 ---
 
+## Publishing checklist (for maintainers)
+
+Before running `vsce publish`:
+
+1. **Icon** — convert [icon.svg](icon.svg) to `icon.png` (128×128) and uncomment / add `"icon": "icon.png"` in `package.json`. Any vector editor or `npx svgexport icon.svg icon.png 128:128` works.
+2. **Publisher** — `package.json` is currently set to publisher `amerganim`. Change it to your Marketplace publisher ID and confirm with `vsce login <publisher>`.
+3. **Repository URL** — update `repository`, `homepage`, and `bugs` URLs in `package.json` to your actual repo.
+4. **Test the package locally** — `vsce package` creates a `.vsix`; install it via `code --install-extension token-optimizer-0.1.0.vsix` to verify.
+5. **Publish** — `vsce publish` (requires a Personal Access Token from dev.azure.com).
+6. **Screenshots / GIFs** — drop into `media/` and reference from this README. Strongly recommended for marketplace visibility but not blocking.
+
 ## Roadmap
 
-- **Phase 9** — Ollama multi-model router (route compression to local LLM, expensive cloud model only for final answer)
-- **Phase 10** — Marketplace polish (icon, screenshots, walkthrough, publish)
+- **(Skipped) Phase 9** — Ollama multi-model router. The rule-based phases already cover ~80% of the value; revisit if users ask for LLM-quality rewriting.
+- **Future** — agent-side hooks for Copilot Chat / Cline / Continue once those expose stable extension APIs.
 
 ---
 
