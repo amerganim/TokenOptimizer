@@ -122,7 +122,7 @@ All available via `Ctrl+Shift+P` → search "Token Optimizer".
 ### Prompt / context
 
 - **Open Prompt Panel** *(default: `Ctrl+Shift+O`)* — the main entry point
-- **Show Cost Estimate** — for the current selection or whole file, shows token count + cost across 4 models (GPT-4o, GPT-4o-mini, Claude Sonnet, Claude Haiku)
+- **Show Cost Estimate** — for the current selection or whole file, shows token count (using your `defaultModel`'s actual tokenizer — see [Tokenizer accuracy](#tokenizer-accuracy)) plus cost across all 4 models
 - **Optimize Selection (Replace In Place)** — right-click on selected code → applies compressor + trimmer and replaces the selection. `Ctrl+Z` undoes.
 
 ### Log / clipboard
@@ -157,7 +157,7 @@ Open `Ctrl+,` → search `tokenOptimizer`.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `tokenOptimizer.defaultModel` | `claude-sonnet` | Model used for cost estimates (`gpt-4o` / `gpt-4o-mini` / `claude-sonnet` / `claude-haiku`) |
+| `tokenOptimizer.defaultModel` | `claude-sonnet` | Model used for cost estimates **and** to pick the tokenizer that counts run through (`gpt-4o` / `gpt-4o-mini` use `o200k_base` — exact; `claude-*` use `cl100k_base` — approximate). See [Tokenizer accuracy](#tokenizer-accuracy). |
 | `tokenOptimizer.tokenBudget` | `4000` | Target prompt budget — drives auto-context cap and repo-map auto-downgrade |
 | `tokenOptimizer.statusBar.enabled` | `true` | Show the live token count in the status bar |
 | `tokenOptimizer.statusBar.showCost` | `false` | Append estimated cost (for default model) to the status bar count |
@@ -200,12 +200,30 @@ Bottom-right shows live token count for the current file or selection:
 ⚡ 1,234 tokens in file · $0.0037   (with showCost enabled)
 ```
 
-Click for a popup with cost estimates across all 4 models.
+Click for a popup with cost estimates across all 4 models. The popup also tells you which tokenizer was used for the count and whether it's exact or approximate for your selected model.
 
 **Hover** for a rich tooltip including:
+- A one-line note on which encoding is being used (`o200k_base` / `cl100k_base`) and whether it's exact or approximate for the active model
 - This session: tokens saved, optimizations count, tokens sent out (with injected context portion)
 - Lifetime: tokens saved, total optimizations, since-date
 - If indexing is in progress: phase, files processed, current file
+
+---
+
+## Tokenizer accuracy
+
+Different models use different tokenizers. Picking the wrong one leads to **count drift** — your "5,800-token" prompt gets rejected by an 8K-context API because the model actually saw 8,200 tokens. Token Optimizer routes counts through the right encoding per model:
+
+| Model | Encoding | Accuracy |
+|---|---|---|
+| `gpt-4o`, `gpt-4o-mini` | `o200k_base` | **Exact** — this is the tokenizer OpenAI ships for these models |
+| `claude-sonnet`, `claude-haiku` | `cl100k_base` | **Approximate (±10%)** — Anthropic does not publish a local tokenizer for Claude 3+. cl100k_base is the best on-device approximation and typically *underestimates* Claude's count by ~10%. |
+| Unknown / custom model id | `cl100k_base` | Approximate fallback |
+
+**Practical implications:**
+- For `gpt-4o`-family models the status bar count, panel count, and cost popup are exact.
+- For Claude models, count drift is real: treat the displayed number as a floor. If you're working close to a context-window limit (200K Claude), give yourself a 10–15% buffer.
+- Changing `tokenOptimizer.defaultModel` in settings instantly re-routes every count in the UI — no reload needed.
 
 ---
 
@@ -299,7 +317,7 @@ src/
 ├── tagCompletion.ts          @-trigger autocomplete
 ├── promptPanel.ts            webview UI + scope resolution
 │
-├── tokenCounter.ts           tiktoken wrapper + cost table
+├── tokenCounter.ts           per-model tokenizer routing (cl100k/o200k) + cost table
 ├── tokenTrimmer.ts           comment/console.log/dedup rules
 ├── promptCompressor.ts       linguistic compression (filler, hedging, phrases)
 ├── logCompressor.ts          log-specific 10-step pipeline
@@ -323,9 +341,9 @@ src/
 ├── codeIndexer.ts            workspace scan + chunk + embed + persist
 ├── semanticSearch.ts         query → cosine → top-N
 │
-└── test/                     156 Jest tests across 9 suites
-    ├── tokenCounter.test.ts            (16 tests)
-    ├── promptCompressor.test.ts        (23 tests)
+└── test/                     177 Jest tests across 9 suites
+    ├── tokenCounter.test.ts            (31 tests — incl. per-model tokenizer routing)
+    ├── promptCompressor.test.ts        (29 tests)
     ├── logCompressor.test.ts           (20 tests)
     ├── symbolHelpers.test.ts           (24 tests)
     ├── gitHelpers.test.ts              (17 tests)
@@ -348,7 +366,7 @@ src/
 npm run test:unit
 ```
 
-Should output: `Tests: 156 passed, 156 total`
+Should output: `Tests: 177 passed, 177 total`
 
 For end-to-end testing in a real VS Code, press **F5** to launch the Extension Development Host (the `.vscode/launch.json` auto-opens this repo as the workspace).
 

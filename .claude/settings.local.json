@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm run *)",
       "Bash(npx jest *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);j.testResults.forEach\\(r=>console.log\\(r.testFilePath.split\\(/[\\\\\\\\\\\\\\\\/]/\\).pop\\(\\)+': '+r.numPassingTests\\)\\)}\\)\")",
+      "Bash(node -e \"const j=require\\('./__counts.json'\\);j.testResults.forEach\\(r=>console.log\\(r.name.split\\(/[\\\\\\\\\\\\\\\\/]/\\).pop\\(\\)+': '+r.assertionResults.length\\)\\)\")"
     ]
   }
 }
