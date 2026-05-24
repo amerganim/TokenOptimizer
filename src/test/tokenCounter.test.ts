@@ -1,4 +1,4 @@
-import { countTokens, estimateCost } from '../tokenCounter';
+import { countTokens, estimateCost, getTokenizerInfo, setActiveModel, getActiveModel } from '../tokenCounter';
 
 describe('countTokens', () => {
 
@@ -66,6 +66,77 @@ describe('estimateCost', () => {
         const known = estimateCost(100, 'gpt-4o');
         const unknown = estimateCost(100, 'some-unknown-model');
         expect(unknown).toBe(known);
+    });
+
+});
+
+describe('getTokenizerInfo — model routing', () => {
+
+    test('gpt-4o uses o200k_base (exact)', () => {
+        const info = getTokenizerInfo('gpt-4o');
+        expect(info.encoding).toBe('o200k_base');
+        expect(info.accuracy).toBe('exact');
+    });
+
+    test('gpt-4o-mini uses o200k_base (exact)', () => {
+        const info = getTokenizerInfo('gpt-4o-mini');
+        expect(info.encoding).toBe('o200k_base');
+        expect(info.accuracy).toBe('exact');
+    });
+
+    test('claude-sonnet uses cl100k_base (approximate)', () => {
+        const info = getTokenizerInfo('claude-sonnet');
+        expect(info.encoding).toBe('cl100k_base');
+        expect(info.accuracy).toBe('approximate');
+        expect(info.note).toBeDefined();
+    });
+
+    test('claude-haiku uses cl100k_base (approximate)', () => {
+        const info = getTokenizerInfo('claude-haiku');
+        expect(info.encoding).toBe('cl100k_base');
+        expect(info.accuracy).toBe('approximate');
+    });
+
+    test('unknown model falls back to cl100k_base (approximate)', () => {
+        const info = getTokenizerInfo('totally-fake-model');
+        expect(info.encoding).toBe('cl100k_base');
+        expect(info.accuracy).toBe('approximate');
+    });
+
+});
+
+describe('countTokens — per-model routing', () => {
+
+    // Emoji + mixed-script Unicode is a reliable BPE divergence point between
+    // cl100k_base and o200k_base: o200k merges many emoji into single tokens
+    // while cl100k_base splits them into byte-pair sequences.
+    const DIVERGENT = '🎉🎊🎁🎈🚀🔥💯✨🎯🏆 héllo wörld مرحبا 你好世界';
+
+    test('explicit model argument actually swaps the encoding', () => {
+        const gpt4o  = countTokens(DIVERGENT, 'gpt-4o');         // o200k_base
+        const claude = countTokens(DIVERGENT, 'claude-sonnet');  // cl100k_base
+        expect(gpt4o).toBeGreaterThan(0);
+        expect(claude).toBeGreaterThan(0);
+        expect(gpt4o).not.toBe(claude);
+    });
+
+    test('setActiveModel changes the default tokenizer for callers that omit model', () => {
+        const prev = getActiveModel();
+        try {
+            setActiveModel('gpt-4o');
+            const asGpt = countTokens(DIVERGENT);
+            setActiveModel('claude-sonnet');
+            const asClaude = countTokens(DIVERGENT);
+            expect(asGpt).not.toBe(asClaude);
+            expect(getActiveModel()).toBe('claude-sonnet');
+        } finally {
+            setActiveModel(prev);
+        }
+    });
+
+    test('empty input returns 0 regardless of model', () => {
+        expect(countTokens('', 'gpt-4o')).toBe(0);
+        expect(countTokens('', 'claude-sonnet')).toBe(0);
     });
 
 });

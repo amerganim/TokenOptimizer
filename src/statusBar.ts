@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { countTokens, estimateCost } from './tokenCounter';
+import { countTokens, estimateCost, getTokenizerInfo } from './tokenCounter';
 import { getSettings, onSettingsChanged } from './settings';
 import { Metrics } from './metrics';
 import { SessionTracker } from './sessionTracker';
@@ -75,9 +75,10 @@ function buildTooltip(model: string): vscode.MarkdownString {
     md.supportThemeIcons = true;
     md.appendMarkdown(`**Token Optimizer**\n\n`);
     md.appendMarkdown(`Click for cost estimate (${model}).\n\n`);
-    const tokenizerNote = model === 'gpt-4o' || model.startsWith('claude')
-        ? '_Counts use cl100k_base — approximate for this model (±10%)._\n\n'
-        : '_Counts use cl100k_base — exact for this model._\n\n';
+    const tinfo = getTokenizerInfo(model);
+    const tokenizerNote = tinfo.accuracy === 'exact'
+        ? `_Counts use ${tinfo.encoding} — exact for this model._\n\n`
+        : `_Counts use ${tinfo.encoding} — approximate for this model${tinfo.note ? ` (${tinfo.note})` : ' (±10%)'}._\n\n`;
     md.appendMarkdown(tokenizerNote);
     md.appendMarkdown(`---\n\n`);
     md.appendMarkdown(`**This session**\n\n`);
