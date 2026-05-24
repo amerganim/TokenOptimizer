@@ -60,6 +60,16 @@ export class TokenTrimmer {
         let trimmed = text;
         const rulesApplied: string[] = [];
 
+        // Stash <keep>...</keep> regions FIRST so no rule below can touch them.
+        // The <keep></keep> wrapper itself is dropped on restore so the final output is clean.
+        const keepRegions: string[] = [];
+        const keepBefore = trimmed;
+        trimmed = trimmed.replace(/<keep>([\s\S]*?)<\/keep>/gi, (_, inner) => {
+            keepRegions.push(inner);
+            return `\x00KEEP${keepRegions.length - 1}\x00`;
+        });
+        if (trimmed !== keepBefore) rulesApplied.push('Preserved <keep> regions');
+
         if (options.removeBlockComments) {
             const before = trimmed;
             trimmed = this._removeBlockComments(trimmed);
@@ -101,6 +111,9 @@ export class TokenTrimmer {
             if (trimmed !== before) rulesApplied.push('Collapsed blank lines');
         }
 
+        // Restore <keep> regions before final whitespace pass
+        trimmed = trimmed.replace(/\x00KEEP(\d+)\x00/g, (_, i) => keepRegions[parseInt(i, 10)]);
+
         // Final trim
         trimmed = trimmed.trim();
 
@@ -122,19 +135,27 @@ export class TokenTrimmer {
     }
 
     // Remove /* block comments */ and /** JSDoc comments */
+    //
+    // SAFE-ONLY MODE: matches block comments that occupy entire lines (optionally
+    // surrounded by whitespace). Anything else — including `/* ... */` inside a
+    // string literal like `const url = "/* literal */"` — is left untouched.
+    // This loses the ability to strip mid-line block comments, which are rare
+    // enough that the safety tradeoff is correct.
     private static _removeBlockComments(text: string): string {
-        return text.replace(/\/\*[\s\S]*?\*\//g, '');
+        return text.replace(/^\s*\/\*[\s\S]*?\*\/\s*$/gm, '');
     }
 
-    // Remove // inline comments (but not URLs like https://)
+    // Remove // inline comments using a quote-aware scanner so we never
+    // strip content inside string or template literals.
     private static _removeInlineComments(text: string): string {
         return text
             .split('\n')
             .map(line => {
-                // Don't touch lines that are ONLY a comment — remove whole line
+                // Lines that are ONLY a comment — drop entirely
                 if (line.trim().startsWith('//')) return '';
-                // Remove inline comment after code — but preserve URLs
-                return line.replace(/\s+\/\/(?!\/)[^'"]*$/,'');
+                const idx = findInlineCommentStart(line);
+                if (idx === -1) return line;
+                return line.substring(0, idx).trimEnd();
             })
             .join('\n');
     }
@@ -184,4 +205,34 @@ export class TokenTrimmer {
     private static _collapseBlankLines(text: string): string {
         return text.replace(/\n{3,}/g, '\n\n');
     }
+}
+
+/**
+ * Walk a single line tracking single-/double-/template-quote state and return
+ * the index of the first `//` that lives OUTSIDE any string. Returns -1 if no
+ * such `//` exists. `///` is preserved (JSDoc / TypeDoc convention).
+ *
+ * Handles:
+ *   - Escaped quotes: `"\""`, `'\''`, `` `\`` ``
+ *   - Mixed quotes within strings: `"it's"` correctly stays open until the matching `"`
+ *   - URLs in strings: `const url = "https://x.com"` is untouched
+ *   - Comments after strings: `const x = "y"; // comment` strips the comment
+ */
+function findInlineCommentStart(line: string): number {
+    let inSingle = false, inDouble = false, inTemplate = false;
+    let escaped = false;
+    for (let i = 0; i < line.length - 1; i++) {
+        const c = line[i];
+        if (escaped) { escaped = false; continue; }
+        if (c === '\\' && (inSingle || inDouble || inTemplate)) { escaped = true; continue; }
+        if (!inDouble && !inTemplate && c === "'")  { inSingle  = !inSingle;  continue; }
+        if (!inSingle && !inTemplate && c === '"')  { inDouble  = !inDouble;  continue; }
+        if (!inSingle && !inDouble   && c === '`')  { inTemplate = !inTemplate; continue; }
+        if (inSingle || inDouble || inTemplate) continue;
+        if (c === '/' && line[i + 1] === '/') {
+            if (line[i + 2] === '/') continue; // /// triple slash — leave alone
+            return i;
+        }
+    }
+    return -1;
 }

@@ -75,6 +75,10 @@ function buildTooltip(model: string): vscode.MarkdownString {
     md.supportThemeIcons = true;
     md.appendMarkdown(`**Token Optimizer**\n\n`);
     md.appendMarkdown(`Click for cost estimate (${model}).\n\n`);
+    const tokenizerNote = model === 'gpt-4o' || model.startsWith('claude')
+        ? '_Counts use cl100k_base — approximate for this model (±10%)._\n\n'
+        : '_Counts use cl100k_base — exact for this model._\n\n';
+    md.appendMarkdown(tokenizerNote);
     md.appendMarkdown(`---\n\n`);
     md.appendMarkdown(`**This session**\n\n`);
     md.appendMarkdown(`- ${session.tokensSaved.toLocaleString()} tokens saved (${sessionCost})\n`);

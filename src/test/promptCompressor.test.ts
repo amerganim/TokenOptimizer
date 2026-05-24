@@ -205,6 +205,65 @@ describe('PromptCompressor — savings reporting', () => {
     });
 });
 
+describe('PromptCompressor — <keep> markers', () => {
+    it('preserves content inside <keep>...</keep> verbatim', () => {
+        const r = PromptCompressor.compress(
+            'Could you please <keep>do NOT change this please thank you</keep> fix bug',
+            COMPRESS_DEFAULT,
+        );
+        // Politeness in the kept region is preserved
+        expect(r.compressed).toContain('do NOT change this please thank you');
+        // Politeness outside is still stripped
+        expect(r.compressed).not.toMatch(/^could you please/i);
+    });
+
+    it('strips the <keep></keep> wrapper itself from the final output', () => {
+        const r = PromptCompressor.compress(
+            '<keep>important</keep>',
+            COMPRESS_DEFAULT,
+        );
+        expect(r.compressed).not.toContain('<keep>');
+        expect(r.compressed).not.toContain('</keep>');
+        expect(r.compressed).toContain('important');
+    });
+
+    it('aggressive preset does NOT abbreviate inside <keep>', () => {
+        const r = PromptCompressor.compress(
+            '<keep>authentication module documentation</keep>',
+            COMPRESS_AGGRESSIVE,
+        );
+        expect(r.compressed).toContain('authentication module documentation');
+        expect(r.compressed).not.toContain('auth module docs');
+    });
+
+    it('handles multiple <keep> regions independently', () => {
+        const r = PromptCompressor.compress(
+            'please <keep>first</keep> and please <keep>second</keep> here',
+            COMPRESS_DEFAULT,
+        );
+        expect(r.compressed).toContain('first');
+        expect(r.compressed).toContain('second');
+        expect(r.compressed).not.toMatch(/please first/);
+    });
+
+    it('is case-insensitive for the marker', () => {
+        const r = PromptCompressor.compress(
+            '<KEEP>UPPER</KEEP> please',
+            COMPRESS_DEFAULT,
+        );
+        expect(r.compressed).toContain('UPPER');
+        expect(r.compressed).not.toContain('<KEEP>');
+    });
+
+    it('records preserve-keep-regions rule when used', () => {
+        const r = PromptCompressor.compress(
+            '<keep>x</keep>',
+            COMPRESS_DEFAULT,
+        );
+        expect(r.rulesApplied).toContain('preserve-keep-regions');
+    });
+});
+
 describe('PromptCompressor — whitespace handling', () => {
     it('collapses multiple spaces', () => {
         const r = PromptCompressor.compress('hello    world', COMPRESS_DEFAULT);

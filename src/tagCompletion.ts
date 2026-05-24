@@ -151,6 +151,21 @@ const TAGS = [
         insertText: '@scope:repo-map:signatures '
     },
     {
+        label: '@keep',
+        detail: 'Wrap a region that must NOT be compressed or trimmed',
+        documentation: new vscode.MarkdownString(
+            '**@keep** — Expands to `<keep>…</keep>` markers. Anything inside is preserved **verbatim** by both the linguistic compressor and the code trimmer.\n\n' +
+            '**Use for:** critical system instructions, exact strings you need the AI to repeat, regex patterns, or anything the compressor might mangle.\n\n' +
+            '**Example:**\n' +
+            '```\n' +
+            '<keep>You MUST return valid JSON matching the schema below.</keep>\n' +
+            '... rest of the verbose prompt ...\n' +
+            '```\n\n' +
+            'The `<keep></keep>` wrapper itself is stripped from the final output — only the inner content survives.'
+        ),
+        insertText: new vscode.SnippetString('<keep>$0</keep>'),
+    },
+    {
         label: '@scope:semantic',
         detail: 'Semantic search over the local code index (opt-in)',
         documentation: new vscode.MarkdownString(
@@ -205,8 +220,19 @@ export function registerTagCompletion(context: vscode.ExtensionContext) {
                     );
                     item.detail = tag.detail;
                     item.documentation = tag.documentation;
-                    // Replace the @ that triggered completion + insert the tag
-                    item.insertText = tag.label.substring(1) + ' ';
+                    // The `@` was the trigger char. We need to REPLACE it.
+                    // Range from one char back to current position covers it.
+                    item.range = new vscode.Range(
+                        position.translate(0, -1),
+                        position,
+                    );
+                    // Snippet tags (e.g., @keep → <keep>$0</keep>) carry a SnippetString
+                    // directly. String tags get the legacy "@-stripped + trailing space" behaviour.
+                    if (tag.insertText instanceof vscode.SnippetString) {
+                        item.insertText = tag.insertText;
+                    } else {
+                        item.insertText = tag.label.substring(1) + ' ';
+                    }
                     item.filterText = tag.label;
                     // Show these at the TOP of the completion list
                     item.sortText = '0' + tag.label;

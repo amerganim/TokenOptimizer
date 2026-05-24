@@ -218,8 +218,19 @@ export class PromptCompressor {
         const rulesApplied: string[] = [];
 
         let working = text;
+        let keepRegions: string[] = [];
         let codeBlocks: string[] = [];
         let inlineCode: string[] = [];
+
+        // Stash <keep>...</keep> regions FIRST — these are user-declared "do not touch" zones.
+        // Inner content is restored verbatim at the end; the <keep></keep> wrapper itself is stripped
+        // so the final prompt sent to the AI doesn't show our markers.
+        const keepBefore = working;
+        working = working.replace(/<keep>([\s\S]*?)<\/keep>/gi, (_, inner) => {
+            keepRegions.push(inner);
+            return `\x00KEEP${keepRegions.length - 1}\x00`;
+        });
+        if (working !== keepBefore) rulesApplied.push('preserve-keep-regions');
 
         // Stash code blocks so compression never touches them
         if (options.preserveCodeBlocks) {
@@ -279,6 +290,9 @@ export class PromptCompressor {
             working = working.replace(/\x00IC(\d+)\x00/g, (_, i) => inlineCode[parseInt(i, 10)]);
             working = working.replace(/\x00CB(\d+)\x00/g, (_, i) => codeBlocks[parseInt(i, 10)]);
         }
+
+        // Restore <keep> regions LAST so they survived all transforms
+        working = working.replace(/\x00KEEP(\d+)\x00/g, (_, i) => keepRegions[parseInt(i, 10)]);
 
         const compressedTokens = countTokens(working);
         const tokensSaved = originalTokens - compressedTokens;

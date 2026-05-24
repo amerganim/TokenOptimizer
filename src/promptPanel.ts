@@ -212,6 +212,18 @@ export class PromptPanel {
         // Only the prose compression counts as "saved tokens" in lifetime metrics.
         Metrics.recordOptimization(proseSaved);
 
+        // Over-compression safety check: warn when prose was compressed >70%
+        // and the input was substantial enough that the ratio is meaningful.
+        // Catches cases where aggressive presets shred short prompts.
+        if (proseSavedPct >= 70 && proseInputTokens >= 30) {
+            vscode.window.showWarningMessage(
+                `Token Optimizer compressed your prose by ${proseSavedPct}% ` +
+                `(${proseInputTokens} → ${proseOutputTokens} tokens). ` +
+                `Review the Diff tab to confirm intent is preserved — ` +
+                `wrap any critical instructions in <keep>…</keep> to protect them.`,
+            );
+        }
+
         // Record session entry — drives cross-prompt warnings + Show Session History.
         SessionTracker.record({
             kind: 'optimize',

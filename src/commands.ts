@@ -292,8 +292,10 @@ function showCost() {
     const textToCount = selectedText.length > 0 ? selectedText : fullText;
     const tokenCount = countTokens(textToCount);
 
+    // We use tiktoken cl100k_base — exact for GPT-4, approximate for everything else.
+    // Claude has no public tokenizer; GPT-4o uses o200k_base (~5-15% drift on long inputs).
     vscode.window.showInformationMessage(
-        `📊 ${tokenCount} tokens | ` +
+        `📊 ${tokenCount} tokens (cl100k_base — exact for GPT-4, ±10% for Claude / GPT-4o) | ` +
         `GPT-4o: ${estimateCost(tokenCount, 'gpt-4o')} | ` +
         `Claude Sonnet: ${estimateCost(tokenCount, 'claude-sonnet')} | ` +
         `Claude Haiku: ${estimateCost(tokenCount, 'claude-haiku')}`

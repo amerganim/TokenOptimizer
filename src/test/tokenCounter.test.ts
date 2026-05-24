@@ -74,11 +74,78 @@ import { TokenTrimmer, DEFAULT_OPTIONS } from '../tokenTrimmer';
 
 describe('TokenTrimmer', () => {
 
-    test('removes block comments', () => {
-        const input = `const x = 1; /* this is a comment */ const y = 2;`;
+    test('removes standalone block comments', () => {
+        // Block comments must occupy their own line(s) to be removed — this is
+        // a deliberate safety tradeoff so we never strip content inside string literals.
+        const input = `const x = 1;\n/* this is a standalone block comment */\nconst y = 2;`;
         const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
         expect(result.trimmed).not.toContain('/*');
         expect(result.trimmed).toContain('const x = 1;');
+        expect(result.trimmed).toContain('const y = 2;');
+    });
+
+    test('leaves mid-line block comments alone (safety tradeoff)', () => {
+        const input = `const x = 1; /* inline */ const y = 2;`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).toContain('/* inline */');
+    });
+
+    test('does NOT strip /* ... */ inside string literals', () => {
+        const input = `const danger = "/* not a comment */";\nconst safe = 1;`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).toContain('"/* not a comment */"');
+    });
+
+    test('removes multi-line JSDoc blocks', () => {
+        const input = [
+            '/**',
+            ' * This function does foo',
+            ' * @param x the input',
+            ' */',
+            'function foo(x) { return x; }',
+        ].join('\n');
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).not.toContain('@param');
+        expect(result.trimmed).toContain('function foo(x)');
+    });
+
+    test('does NOT strip // inside string literals', () => {
+        const input = `const url = "https://api.example.com/path";\nconst x = 1;`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).toContain('"https://api.example.com/path"');
+    });
+
+    test('does NOT strip // inside template literals', () => {
+        const input = 'const url = `${base}//${path}`;\nconst x = 1;';
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).toContain('${base}//${path}');
+    });
+
+    test('strips // comment after a string literal correctly', () => {
+        const input = `const url = "https://api.com"; // a real trailing comment`;
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).toContain('"https://api.com"');
+        expect(result.trimmed).not.toContain('a real trailing comment');
+    });
+
+    test('preserves <keep>...</keep> content from all trimmer rules', () => {
+        const input = [
+            '<keep>',
+            '// this comment must stay',
+            "console.log('important debug')",
+            '</keep>',
+            '',
+            '// this comment can go',
+            "console.log('throwaway')",
+        ].join('\n');
+        const result = TokenTrimmer.trim(input, DEFAULT_OPTIONS);
+        expect(result.trimmed).toContain('// this comment must stay');
+        expect(result.trimmed).toContain("console.log('important debug')");
+        expect(result.trimmed).not.toContain('// this comment can go');
+        expect(result.trimmed).not.toContain("console.log('throwaway')");
+        // wrapper itself stripped
+        expect(result.trimmed).not.toContain('<keep>');
+        expect(result.trimmed).not.toContain('</keep>');
     });
 
     test('removes inline comments', () => {
